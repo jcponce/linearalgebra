@@ -147,7 +147,7 @@ html {
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDYwIDQwIj4NCiAgPGcgc3Ryb2tlPSJnaG9zdHdoaXRlIiBzdHJva2Utd2lkdGg9IjEiIHN0cm9rZS1saW5lY2FwPSJzcXVhcmUiPg0KICAgIDxsaW5lIHgxPSIwLjUiIHkxPSIxOS41Ig0KICAgICAgICAgIHgyPSI1OS41IiB5Mj0iMTkuNSIgLz4NCiAgICA8bGluZSB4MT0iMC41IiB5MT0iMzkuNSINCiAgICAgICAgICB4Mj0iNTkuNSIgeTI9IjM5LjUiIC8+DQogICAgPGxpbmUgeDE9IjE5LjUiIHkxPSIwLjUiDQogICAgICAgICAgeDI9IjE5LjUiIHkyPSIzOS41IiAvPg0KICAgIDxsaW5lIHgxPSIzOS41IiB5MT0iMC41Ig0KICAgICAgICAgIHgyPSIzOS41IiB5Mj0iMzkuNSIgLz4NCiAgICA8bGluZSB4MT0iNTkuNSIgeTE9IjAuNSINCiAgICAgICAgICB4Mj0iNTkuNSIgeTI9IjM5LjUiIC8+DQogIDwvZz4NCjwvc3ZnPg0K");
   background-size: 20px 20px;
   background-position: -1px -1px;
-  font-size: 17px;
+  font-size: 19px;
 }
 
 /* [tabindex] is needed for IE 11 to not draw the outline on a <div> with `display: table-cell` */
