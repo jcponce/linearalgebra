@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" data-version-tag="?20190106T232943Z">
+<head>
+    <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="application-name" content="matrixcalc" />
+  <meta name="theme-color" content="#2B5797" />
+
+  <!--[if lte IE 8]>
+    <script src="../ie8.js"></script>
+  <![endif]-->
+  <script defer src="js/i18n-en.js?20190106T232943Z"></script>
+  <script defer src="js/mjs.js?20190106T232943Z"></script>
+
+<!--
+ <link rel="alternate" hreflang="ar" href="../ar/" />
+<link rel="alternate" hreflang="bg" href="../bg/" />
+<link rel="alternate" hreflang="cs" href="../cs/" />
+<link rel="alternate" hreflang="de" href="../de/" />
+<link rel="alternate" hreflang="en" href="../en/" />
+<link rel="alternate" hreflang="es" href="../es/" />
+<link rel="alternate" hreflang="fa" href="../fa/" />
+<link rel="alternate" hreflang="fr" href="../fr/" />
+<link rel="alternate" hreflang="gl" href="../gl/" />
+<link rel="alternate" hreflang="it" href="../it/" />
+<link rel="alternate" hreflang="ja" href="../ja/" />
+<link rel="alternate" hreflang="mk" href="../mk/" />
+<link rel="alternate" hreflang="nl" href="../nl/" />
+<link rel="alternate" hreflang="no" href="../no/" />
+<link rel="alternate" hreflang="pl" href="../pl/" />
+<link rel="alternate" hreflang="pt" href="../pt/" />
+<link rel="alternate" hreflang="ro" href="../ro/" />
+<link rel="alternate" hreflang="ru" href="../" />
+<link rel="alternate" hreflang="tr" href="../tr/" />
+<link rel="alternate" hreflang="uk" href="../uk/" />
+<link rel="alternate" hreflang="vi" href="../vi/" />
+<link rel="alternate" hreflang="zh" href="../zh/" />
+  <link rel="canonical" href="https://matrixcalc.org/en/" />
+ -->
+  
+
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/x-icon" sizes="16x16" href="favicon.ico" />
+  <link href="css/mcss.css?20190106T232943Z" rel="stylesheet" type="text/css" />
+
+  <title>Matrix calculator</title>
+  <meta name="description" content="Matrix addition, multiplication, inversion, determinant and rank calculation, transposing, bringing to diagonal, triangular form, exponentiation" />
+</head>
+<body>
+<header id="header">
+  <a id="logo" href="./">Matrix calculator</a>
+  <!--<nav id="language">
+    <button type="button" id="language-popup-button" class="language-popup-button" aria-haspopup="true" title="Language"></button>
+    <dialog id="language-popup" class="menu-dialog" role="menu">
+      <a href="../ar/" hreflang="ar" lang="ar" dir="rtl" class="menuitem" role="menuitem">العَرَبِيَّة</a><a href="../bg/" hreflang="bg" lang="bg" dir="ltr" class="menuitem" role="menuitem">Български</a><a href="../cs/" hreflang="cs" lang="cs" dir="ltr" class="menuitem" role="menuitem">Čeština</a><a href="../de/" hreflang="de" lang="de" dir="ltr" class="menuitem" role="menuitem">Deutsch</a><a href="../en/" hreflang="en" lang="en" dir="ltr" class="menuitem" role="menuitem" aria-current="page">English</a><a href="../es/" hreflang="es" lang="es" dir="ltr" class="menuitem" role="menuitem">Español</a><a href="../fa/" hreflang="fa" lang="fa" dir="rtl" class="menuitem" role="menuitem">فارسی</a><a href="../fr/" hreflang="fr" lang="fr" dir="ltr" class="menuitem" role="menuitem">Français</a><a href="../gl/" hreflang="gl" lang="gl" dir="ltr" class="menuitem" role="menuitem">Galego</a><a href="../it/" hreflang="it" lang="it" dir="ltr" class="menuitem" role="menuitem">Italiano</a><a href="../ja/" hreflang="ja" lang="ja" dir="ltr" class="menuitem" role="menuitem">日本語</a><a href="../mk/" hreflang="mk" lang="mk" dir="ltr" class="menuitem" role="menuitem">Македонски</a><a href="../nl/" hreflang="nl" lang="nl" dir="ltr" class="menuitem" role="menuitem">Nederlands</a><a href="../no/" hreflang="no" lang="no" dir="ltr" class="menuitem" role="menuitem">Norsk</a><a href="../pl/" hreflang="pl" lang="pl" dir="ltr" class="menuitem" role="menuitem">Polski</a><a href="../pt/" hreflang="pt" lang="pt" dir="ltr" class="menuitem" role="menuitem">Português</a><a href="../ro/" hreflang="ro" lang="ro" dir="ltr" class="menuitem" role="menuitem">Română</a><a href="../" hreflang="ru" lang="ru" dir="ltr" class="menuitem" role="menuitem">Русский</a><a href="../tr/" hreflang="tr" lang="tr" dir="ltr" class="menuitem" role="menuitem">Türkçe</a><a href="../uk/" hreflang="uk" lang="uk" dir="ltr" class="menuitem" role="menuitem">Українська</a><a href="../vi/" hreflang="vi" lang="vi" dir="ltr" class="menuitem" role="menuitem">Tiếng việt</a><a href="../zh/" hreflang="zh" lang="zh" dir="ltr" class="menuitem" role="menuitem">中文(繁體)</a>
+    </dialog>
+  </nav>-->
+</header>
+
+<div id="bigtable">
+  <div id="left">
+    
+   <nav class="menu"><!--
+--><a href="./">Matrix calculator</a><!--
+--><a href="slu.html">Solving systems of linear equations</a><!--
+--><a href="det.html">Determinant calculator</a><!--
+--><!--<a href="ex.html" class="langRuOnly" hreflang="ru">Examples</a>--><!--
+--><a href="vectors.html">Eigenvalues calculator</a><!--
+--><a rel="noopener" href="https://en.wikipedia.org/wiki/Matrix_(mathematics)">Wikipedia:Matrices</a><!--
+--></nav>
+
+    <aside>
+  
+</aside>
+
+  </div>
+<main id="right">
+<form class="main">
+<div>
+  <div class="tdmatrix">
+    <fieldset>
+      <legend align="center">Matrix A:</legend>
+      <div class="insert-table" data-id="A" data-sizes="3x3" data-type="simple"></div>
+    </fieldset>
+    <div class="bbox"><!--
+    --><button type="button" class="expression-button" data-expression="determinant A">Find the determinant</button><!--
+    --><button type="button" class="expression-button" data-expression="A^-1">Find the inverse</button><!--
+    --><button type="button" class="expression-button" data-expression="transpose A">Transpose</button><!--
+    --><button type="button" class="expression-button" data-expression="rank A">Find the rank</button><!--
+    --><span class="button-before-input"><button type="button" class="expression-button" data-expression="k * A">Multiply by</button><span class="a-input"><input id="k-A-m" name="k-A-m" type="text" autocapitalize="off" inputmode="numbersAndPunctuation" spellcheck="false" class="fraction-input" value="2" /></span></span><!--
+    --><button type="button" class="expression-button" data-expression="Gaussian-elimination A">Triangular matrix</button><!--
+    --><button type="button" class="expression-button" data-expression="diagonalize A">Diagonal matrix</button><!--
+    --><span class="button-before-input"><button type="button" class="expression-button" data-expression="A ^ k">Raise to the power of</button><span class="a-input"><input id="k-A-e" name="k-A-e" type="text" autocapitalize="off" inputmode="numbersAndPunctuation" spellcheck="false" class="fraction-input" value="2" pattern="[\d\+\-\*\/\^\(\)n]*" /></span></span><!--
+    --><button type="button" class="expression-button" data-expression="LU-decomposition A">LU-decomposition</button><!--
+    --><button type="button" class="expression-button" data-expression="Cholesky-decomposition A">Cholesky decomposition</button><!--
+    --></div>
+  </div>
+  <div class="bbox2">
+    <div><button type="button" class="change-button" data-for1="A" data-for2="B" title="Swap matrices">&larr;<br />&rarr;</button></div>
+    <div><button type="button" class="expression-button" data-expression="A * B" title="Matrix multiplication">A<span class="operator">*</span>B</button></div>
+    <div><button type="button" class="expression-button" data-expression="A + B" title="Matrix addition">A<span class="operator">+</span>B</button></div>
+    <div><button type="button" class="expression-button" data-expression="A - B" title="Matrix subtraction">A<span class="operator">-</span>B</button></div>
+  </div>
+  <div class="tdmatrix">
+    <fieldset>
+      <legend align="center">Matrix B:</legend>
+      <div class="insert-table" data-id="B" data-sizes="3x3" data-type="simple"></div>
+    </fieldset>
+    <div class="bbox"><!--
+    --><button type="button" class="expression-button" data-expression="determinant B">Find the determinant</button><!--
+    --><button type="button" class="expression-button" data-expression="B^-1">Find the inverse</button><!--
+    --><button type="button" class="expression-button" data-expression="transpose B">Transpose</button><!--
+    --><button type="button" class="expression-button" data-expression="rank B">Find the rank</button><!--
+    --><span class="button-before-input"><button type="button" class="expression-button" data-expression="k * B">Multiply by</button><span class="a-input"><input id="k-B-m" name="k-B-m" type="text" autocapitalize="off" inputmode="numbersAndPunctuation" spellcheck="false" class="fraction-input" value="2" /></span></span><!--
+    --><button type="button" class="expression-button" data-expression="Gaussian-elimination B">Triangular matrix</button><!--
+    --><button type="button" class="expression-button" data-expression="diagonalize B">Diagonal matrix</button><!--
+    --><span class="button-before-input"><button type="button" class="expression-button" data-expression="B ^ k">Raise to the power of</button><span class="a-input"><input id="k-B-e" name="k-B-e" type="text" autocapitalize="off" inputmode="numbersAndPunctuation" spellcheck="false" class="fraction-input" value="2" pattern="[\d\+\-\*\/\^\(\)n]*" /></span></span><!--
+    --><button type="button" class="expression-button" data-expression="LU-decomposition B">LU-decomposition</button><!--
+    --><button type="button" class="expression-button" data-expression="Cholesky-decomposition B">Cholesky decomposition</button><!--
+    --></div>
+  </div>
+</div>
+</form>
+<div class="notranslate" translate="no" dir="ltr">
+  <div class="expression-input-container">
+    <span class="button-after-input">
+      <datalist id="expressions-list" hidden>
+        <option></option>
+        <option>determinant(A)</option>
+        <option>A^-1</option>
+        <option>transpose(A)</option>
+        <option>rank(A)</option>
+        <option>adjugate(A)</option>
+        <option>determinant(B)</option>
+        <option>B^-1</option>
+        <option>transpose(B)</option>
+        <option>rank(B)</option>
+        <option>adjugate(B)</option>
+        <option>A*B</option>
+        <option>A+B</option>
+        <option>A-B</option>
+        <option>A*X=B</option>
+        <option>{{1,2,3},{4,5,6},{7,2,9}}^(-1)</option>
+      </datalist>
+      <span class="a-input">
+        <input id="expression"
+               name="expression"
+               type="text"
+               autocapitalize="off"
+               autocomplete="on"
+               inputmode="verbatim"
+               spellcheck="false"
+               title="Expression input field"
+               class="expression-input unfocused-placeholder"
+               placeholder="1*A+2*B"
+               list="expressions-list" />
+      </span><!--
+      --><button type="button" class="expression-input-button">
+        <span class="operator">=</span>
+      </button>
+    </span>
+  </div>
+</div>
+<div class="line">
+  <div>
+    <div class="decimal-fraction-digits-controls">
+      <input type="checkbox" id="decfraccheckbox" /><label for="decfraccheckbox">Display decimals</label>
+      <span hidden id="frdigitsspan"><span>, </span><label for="frdigits">number of decimal places: </label><input type="number" min="0" step="1" id="frdigits" value="2" /></span>
+    </div>
+    <div class="text-align-right">
+      <button type="button" class="clear-all-button">Clean</button>
+      <button type="button" class="add-table">+</button>
+    </div>
+  </div>
+</div>
+<section id="resdiv" aria-live="polite"></section>
+
+<p>With help of this calculator you can: find the matrix determinant, the rank, raise the matrix to a power, find the sum and the multiplication of matrices, calculate the inverse matrix. Just type matrix elements and click the button.</p>
+<section id="advices">
+  <ul>
+  <li>Leave extra cells <i>empty</i> to enter non-square matrices.</li>
+  <li>You can use decimal (finite and periodic) fractions: <code dir="ltr">1/3</code>, <code dir="ltr">3.14</code>, <code dir="ltr">-1.3(56)</code>, <code dir="ltr">1.2e-4</code>; or arithmetic expressions: <code dir="ltr">2/3+3*(10-4)</code>, <code dir="ltr">(1+x)/y^2</code>, <code dir="ltr">2^0.5</code>, <code dir="ltr">sin(\phi)</code>.</li>
+  <li>Use <kbd>↵ Enter</kbd>, <kbd>Space</kbd>, <kbd>←</kbd>, <kbd>→</kbd>, <kbd>↑</kbd>, <kbd>↓</kbd> to navigate between cells.</li>
+  <li><a rel="noopener" href="https://en.wikipedia.org/wiki/Drag_and_drop">Drag-and-drop</a> matrices from the results, or even from/to a text editor.</li>
+  <li>To learn more about matrices use <a rel="noopener" href="https://en.wikipedia.org/wiki/Matrix_(mathematics)">Wikipedia</a>.</li>    
+  </ul>
+</section>
+
+
+<section id="examples">
+  <div class="details-container">
+  <details>
+    <summary>Examples</summary>
+    <div>
+      <ul>
+        <li><a class="notranslate" translate="no" dir="ltr" href="#%7B%7B11,3%7D,%7B7,11%7D%7D%2A%7B%7B8,0,1%7D,%7B0,3,5%7D%7D"><code>{{11,3},{7,11}}*{{8,0,1},{0,3,5}}</code></a></li>
+        <li><a class="notranslate" translate="no" dir="ltr" href="#determinant%28%7B%7B1,2,3%7D,%7B4,5,6%7D,%7B7,2,9%7D%7D%29"><code>determinant({{1,2,3},{4,5,6},{7,2,9}})</code></a></li>
+        <li><a class="notranslate" translate="no" dir="ltr" href="#%7B%7B1,2%7D,%7B3,4%7D%7D%5E%28-1%29"><code>{{1,2},{3,4}}^-1</code></a></li>
+        <li><a class="notranslate" translate="no" dir="ltr" href="#%7B%7B1,2,3%7D,%7B4,5,6%7D,%7B7,2,9%7D%7D%5E%28-1%29"><code>{{1,2,3},{4,5,6},{7,2,9}}^-1</code></a></li>
+        <!-- 5x+3y=7,3x-5y=-23 -->
+     </ul>
+   </div>
+ </details>
+ </div>
+</section>
+
+  <div class="hypercomments-details-summary-container">
+    <div class="details-container">
+    <details>
+      <summary>Comments</summary>
+      <div id="hypercomments_widget">
+        <progress></progress>
+        <a rel="noopener" href="https://www.hypercomments.com/" id="hc-link" class="hc-link" lang="en" dir="auto" title="comments widget" hidden>
+          <span class="powered-text">comments powered by HyperComments</span>
+          <span class="cannot-load-text" hidden>Cannot load the widget</span>
+        </a>
+      </div>
+    </details>
+    </div>
+  </div>
+<!--
+    <div class="like-box">
+      <a rel="noopener" href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fmatrixcalc.org%2Fen%2F" class="facebook-share-button" data-lang="en" target="_blank" title="Share"></a>
+      <a rel="noopener" href="https://twitter.com/share?url=https%3A%2F%2Fmatrixcalc.org%2Fen%2F&amp;text=Matrix%20calculator" class="twitter-share-button" data-lang="en" target="_blank" title="Tweet"></a>
+      <a rel="noopener" href="https://plus.google.com/share?url=https%3A%2F%2Fmatrixcalc.org%2Fen%2F" class="google-plus-share-button" data-lang="en" target="_blank" title="Share"></a>
+      <button type="button" class="share-button" data-url="https%3A%2F%2Fmatrixcalc.org%2Fen%2F" data-text="Matrix%20calculator" title="Share" hidden></button>
+    </div>-->
+</main>
+</div>
+
+<div class="from-cookie" data-example="data-example"></div>
+
+
+<template id="insert-table-template" hidden>
+  <div data-for="NAME" tabindex="0">
+    <table>
+      <tbody></tbody>
+    </table>
+    <div class="textarea-container">
+      <span class="a-input">
+        <textarea id="TEXTAREA_NAME"
+                  name="TEXTAREA_NAME"
+                  wrap="off"
+                  autocapitalize="off"
+                  autocomplete="off"
+                  inputmode="numbersAndPunctuation"
+                  spellcheck="false"
+                  class="matrix-table-textarea unfocused-placeholder"
+                  placeholder="-2  2 -3&#x0A;-1  1  3&#x0A; 2  0 -1"><!--
+        --></textarea>
+      </span>
+    </div>
+  </div>
+  <div class="div-nowrap">
+    <button type="button" aria-pressed="mixed" class="swap-mode-button">Cells</button>
+    <button type="button" class="clear-table-button" data-for="NAME">Clean</button>
+    <button type="button" class="increment-size-button resize-table-button" data-for="NAME" data-inc="+1">+</button>
+    <button type="button" class="decrement-size-button resize-table-button" data-for="NAME" data-inc="-1">&minus;</button>
+  </div>
+</template>
+
+<template id="insert-buttons-template" hidden>
+  <div class="insert-buttons">
+    <div><button type="button" class="print-matrix-button" data-act-history-id="" data-print-matrix-to="A">Insert in A</button></div>
+    <div><button type="button" class="print-matrix-button" data-act-history-id="" data-print-matrix-to="B">Insert in B</button></div>
+    <div><button type="button" class="clear-button" data-act-history-id="">Clean</button></div>
+  </div>
+</template>
+
+<template id="matrix-menu-template" hidden>
+  <menu type="context" id="matrix-menu">
+    <menuitem id="print-matrix-menuitem-X" label="Insert in X"></menuitem>
+    <menuitem id="copy-matrix-to-clipboard-menuitem" label="Copy"></menuitem>
+    <menuitem id="show-mathml-menuitem" label="Show MathML"></menuitem>
+    <menuitem id="show-text-menuitem" label="Show as plain text"></menuitem>
+    <menuitem id="show-image-menuitem" label="Show as image"></menuitem>
+    <menuitem id="show-latex-menuitem" label="Show LaTeX"></menuitem>
+  </menu>
+</template>
+
+<template id="add-table-template" hidden>
+  <div class="tdmatrix">
+    <fieldset>
+      <legend align="center">Matrix <span class="table-id">X</span>: <button type="button" class="remove-table" data-id="X">✗</button></legend>
+      <div class="insert-table" data-id="X" data-sizes="3x3" data-type="simple"></div>
+    </fieldset>
+  </div>
+</template>
+
+<footer id="footer">
+  <address id="contact">
+    <!--
+     <a rel="noopener nofollow author" href="mailto:matri-tri-ca@yandex.ru">matri-tri-ca@yandex.ru</a>
+     -->
+  </address>
+  <!--
+  <div id="thanks" lang="en" dir="ltr">
+    <ul>
+      <li>Thanks to Philip Petrov (<a rel="noopener" href="https://cphpvb.net" hreflang="bg">https://cphpvb.net</a>) for Bulgarian translation</li>
+      <li>Thanks to Manuel Rial Costa for Galego translation</li>
+      <li>Thanks to Shio Kun for Chinese translation</li>
+      <li>Thanks to Petar Sokoloski (<a rel="noopener" href="https://im-pmf-en.weebly.com/petar-sokoloski.html" hreflang="en">https://im-pmf-en.weebly.com/petar-sokoloski.html</a>) for Macedonian translation</li>
+      <li>Thanks to Duy Thúc Trần for Vietnamese translation</li>
+      <li>Thanks to <a rel="noopener" href="https://www.twitter.com/RKursatV" hreflang="en">Rıfkı Kürşat Vuruşan</a> for Turkish translation</li>
+      <li>Thanks to Ousama Malouf and Yaseen Ibrahim for Arabic translation</li>
+    </ul>
+  </div>-->
+  <div id="externalLinks">
+     
+  </div>
+</footer>
+
+
+</body>
+</html>
