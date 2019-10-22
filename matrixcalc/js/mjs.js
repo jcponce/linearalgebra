@@ -37,14 +37,14 @@
 
   var html2html = function (container) {
     var result = "";
-    var tagName = container.tagName.toUpperCase();
-    if (tagName === "LINK" && container.getAttribute("rel") === "stylesheet") {
+    var tagName = container.tagName.toLowerCase();
+    if (tagName === 'link' && container.getAttribute('rel') === 'stylesheet') {
       var href = container.href;
       result += "<link href=\"" + escapeHTML(href) + "\" rel=\"stylesheet\" type=\"text/css\"/>";
-    } else if (tagName !== "SCRIPT" && tagName !== "IFRAME") {
+    } else if (tagName !== 'script' && tagName !== 'iframe') {
       result += "<";
       result += tagName;
-      if (tagName === "INPUT") {
+      if (tagName === 'input') {
         result += " " + "value" + "=" + "\"" +  escapeHTML(container.value) + "\"";
       }
       if (container.hasAttributes()) {
@@ -56,7 +56,7 @@
         }
       }
       result += ">";
-      if (tagName === "TEXTAREA") {
+      if (tagName === 'textarea') {
         result += escapeHTML(container.value);
       } else {
         var child = container.firstChild;
@@ -94,8 +94,9 @@
 
 }(this));
 
+/*global self*/
 
-(function (global) {
+(function () {
   "use strict";
 
   // Firefox < 4, Opera < 11.60, IE 8
@@ -109,11 +110,12 @@
   }
 
   // Opera 12
-  if ((-2147483649).toString(16) === "-0") {
+  if ((-2147483649).toString(16) === "-0" && (2147483649).toString(16) === "80000001") {
     var numberToString = Number.prototype.toString;
     Number.prototype.toString = function (radix) {
       "use strict";
-      return (this < 0 ? "-" : "") + numberToString.call(this < 0 ? 0 - this : this, radix);
+      var value = 0 + this;
+      return (value < 0 ? "-" : "") + numberToString.call(value < 0 ? 0 - value : value, radix);
     };
   }
 
@@ -137,10 +139,42 @@
     Number.parseInt = parseInt;
   }
 
-}(this));
+  if (Object.getOwnPropertyDescriptor == undefined && Object.prototype.__lookupGetter__ != undefined && Object.prototype.__lookupSetter__ != undefined) {
+    Object.getOwnPropertyDescriptor = function (object, property) {
+      "use strict";
+      if (Object.prototype.hasOwnProperty.call(object, property)) {
+        var getter = Object.prototype.__lookupGetter__.call(object, property);
+        var setter = Object.prototype.__lookupSetter__.call(object, property);
+        if (getter != undefined || setter != undefined) {
+          return {
+            get: getter,
+            set: setter,
+            enumerable: false,
+            configurable: true
+          };
+        }
+        return {
+          value: object[property],
+          writable: true,
+          enumerable: true,
+          configurable: true
+        };
+      }
+      return undefined;
+    };
+  }
+  
+  if (String.prototype.trim == undefined) {
+    String.prototype.trim = function () {
+      "use strict";
+      return this.replace(/^\s+|\s+$/g, '');
+    };
+  }
+
+}());
 
 
-(function (global) {
+(function () {
   "use strict";
 
   // IE < 9, Firefox < 4, Opera < 11.60
@@ -188,7 +222,7 @@
     Number.parseFloat = parseFloat;
   }
 
-}(this));
+}());
 
 // Firefox < 3.5, ...
 if (this.JSON == undefined) {
@@ -235,8 +269,11 @@ if (this.JSON == undefined) {
   };
 }
 
+if (!("globalThis" in self)) {
+  self.globalThis = self;
+}
 
-/*global Event, Node, document, window, Element, HTMLElement, DOMTokenList, Document, DocumentFragment, HTMLInputElement, HTMLTextAreaElement, TextRange */
+/*global document, window, Element, Event, Node, HTMLElement, DOMTokenList, Document, DocumentFragment, HTMLInputElement, HTMLTextAreaElement, TextRange */
 
 // IE < 9, Firefox < 3.5
 if (!("firstElementChild" in document.documentElement)) {
@@ -290,23 +327,46 @@ if (!("firstElementChild" in tmpFragment) ||
 if (Element.prototype.querySelectorAll == undefined) {
   Element.prototype.querySelectorAll = function (s) {
     "use strict";
+    var selectorRegExp = /^([a-zA-Z\-]+)?(\.[a-zA-Z\-]+)?(?:\[([a-zA-Z\-]+)(?:\="?([a-z\{\}\(\)\|]+)"?)?\])?$/;
+    var tmp = selectorRegExp.exec(s);
+    if (tmp == null) {
+      throw new TypeError("Unsupported selector: " + s);
+    }
+    var tagName = null;
+    var className = null;
+    var attributeName = null;
+    var attributeValue = null;
+    if (tmp[1] != null) {
+      tagName = tmp[1].toLowerCase();//!
+    }
+    if (tmp[2] != null) {
+      className = tmp[2].slice(1);
+    }
+    if (tmp[3] != null) {
+      attributeName = tmp[3];
+    }
+    if (tmp[4] != null) {
+      attributeValue = tmp[4];
+    }
     var results = [];
-    var toWalk = [];
-    var i = -1;
-    toWalk.push(this);
-    while (++i < toWalk.length) {
-      var x = toWalk[i];
-      if ((s.charCodeAt(0) === ".".charCodeAt(0) && x.classList.contains(s.slice(1))) ||
-          (s.charCodeAt(0) === "[".charCodeAt(0) && x.getAttribute(s.slice(1, -1)) != undefined) ||
-          x.tagName.toUpperCase() === s.toUpperCase()) {
+    var matches = function (x) {
+      return (tagName == null || x.tagName.toLowerCase() === tagName) &&
+             (className == null || x.classList.contains(className)) &&
+             (attributeName == null || x.getAttribute(attributeName) != null) &&
+             (attributeValue == null || x.getAttribute(attributeName) === attributeValue);
+    };
+    var traverse = function (x) {
+      // https://en.wikipedia.org/wiki/Tree_traversal#Pre-order_(NLR)
+      if (matches(x)) {
         results.push(x);
       }
       var c = x.firstElementChild;
-      while (c != undefined) {
-        toWalk.push(c);
+      while (c != null) {
+        traverse(c);
         c = c.nextElementSibling;
       }
-    }
+    };
+    traverse(this);
     return results;
   };
 }
@@ -421,15 +481,19 @@ if (!("classList" in document.documentElement)) {
 if (window.XDomainRequest != undefined && !("draggable" in document.documentElement)) {
   document.addEventListener("selectstart", function (event) {
     "use strict";
-    var target = event.target;
-    while (target != undefined && !(target.nodeType === Node.ELEMENT_NODE && target.getAttribute("draggable") != undefined)) {
-      target = target.parentNode;
-    }
-    if (target != undefined) {
-      event.preventDefault();
-      target.dragDrop();
+    if (!event.altKey) {
+      var target = event.target;
+      while (target != undefined && !(target.nodeType === Node.ELEMENT_NODE && target.getAttribute("draggable") != undefined)) {
+        target = target.parentNode;
+      }
+      if (target != undefined && target.nodeType === Node.ELEMENT_NODE && target.getAttribute("draggable") != undefined) {
+        event.preventDefault();
+        target.dragDrop();
+      }
     }
   }, false);
+  //TODO:
+  //document.documentElement.draggable = undefined; //Note: this will add the attribute "draggable" too in IE 8
 }
 
 // IE 8 does not support input event
@@ -542,7 +606,7 @@ if (!("oncopy" in document)) {
 
     var addCopyFix = function () {
       var activeElement = document.activeElement;
-      if (activeElement == undefined || activeElement.tagName.toUpperCase() !== "INPUT" && activeElement.tagName.toUpperCase() !== "TEXTAREA") {
+      if (activeElement == undefined || activeElement.tagName.toLowerCase() !== 'input' && activeElement.tagName.toLowerCase() !== 'textarea') {
         var selection = window.getSelection();
         if (selection.isCollapsed) {
           var copyFix = document.createElement("div");
@@ -622,13 +686,13 @@ if (document.documentElement.classList.toggle("test", false)) {
 // TypeError: Cannot use 'in' operator to search for 'mozCursor' in undefined in Safari
 if ((window.DataTransfer != undefined && window.DataTransfer.prototype != undefined && "mozCursor" in window.DataTransfer.prototype && !("caretColor" in document.documentElement.style)) || window.XDomainRequest != undefined) {
   (function () {
-    "use strict";
+    'use strict';
     var lastScrollTop = 0;
-    document.addEventListener("dragover", function (event) {
+    document.addEventListener('dragover', function (event) {
       if (lastScrollTop === window.pageYOffset) { // The skip if the web browser has the support of this feature
-        var t = event.clientY;
-        var b = document.documentElement.clientHeight - event.clientY;
-        var dy = t < 16 ? -1 * (16 - t) * (16 - t) : (b < 16 ? +1 * (b - 16) * (b - 16) : 0);
+        var distanceToTopEdge = event.clientY;
+        var distanceToBottomEdge = document.documentElement.clientHeight - event.clientY;
+        var dy = distanceToTopEdge < 16 ? -Math.pow(16 - distanceToTopEdge, 2) : (distanceToBottomEdge < 16 ? +Math.pow(distanceToBottomEdge - 16, 2) : 0);
         if (dy !== 0) {
           window.scrollBy(0, dy);
         }
@@ -637,7 +701,6 @@ if ((window.DataTransfer != undefined && window.DataTransfer.prototype != undefi
     }, false);
   }());
 }
-
 
 // https://bugzilla.mozilla.org/show_bug.cgi?id=688580 (Firefox < 31)
 if ("MozBackgroundInlinePolicy" in document.documentElement.style && document.readyState === "interactive") {
@@ -691,6 +754,40 @@ if (window.clipboardData != undefined && window.MouseEvent != undefined) {
   redefineClientXY("clientY");
 }
 
+
+//TODO: more simple test - ?
+if (!("hidden" in document.documentElement)) {
+  var tmp = document.createElement('div');
+  tmp.innerHTML = '&ii;';
+  if (tmp.textContent === '&ii;') {
+    var innerHTML = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'innerHTML');
+    if (innerHTML != null) {
+      Object.defineProperty(HTMLElement.prototype, 'innerHTML', {
+        get: function () {
+          'use strict';
+          return innerHTML.get.call(this);
+        },
+        set: function (value) {
+          'use strict';
+          var s = value.replace(/&[a-zA-Z]+;/g, function (p) {
+            switch (p) {
+              case '&af;': return '&#x2061;';
+              case '&it;': return '&#x2062;';
+              case '&ic;': return '&#x2063;';
+              case '&ii;': return '&#x2148;';
+              case '&vellip;': return '&#x22EE;';
+              case '&UnderBrace;': return '&#x23DF;';
+            }
+            return p;
+          });
+          innerHTML.set.call(this, s);
+        },
+        enumerable: false,
+        configurable: true
+      });
+    }
+  }
+}
 
 // Chrome < 6, Firefox < 4, IE < 11, Opera < 11, Safari < 5.1
 // https://codepen.io/valtlai/pen/wKyodg
@@ -822,10 +919,15 @@ if (window.DataTransfer != undefined && !("oncopy" in document)) {
   window.DataTransfer.prototype.setData = function (type, data) {
     "use strict";
     try {
-      nativeSetData.call(this, type, data);
+      nativeSetData.call(this, type === "text/plain" ? "Text" : type, data);
     } catch (error) {
       window.console.log(error);
     }
+  };
+  var nativeGetData = window.DataTransfer.prototype.getData;
+  window.DataTransfer.prototype.getData = function (type) {
+    "use strict";
+    return nativeGetData.call(this, type === "text/plain" ? "Text" : type);
   };
 }
 
@@ -880,7 +982,7 @@ if (Object.getOwnPropertyDescriptor != undefined && HTMLInputElement.prototype.c
     if (originalScrollProperty != undefined) {
       Object.defineProperty(Element.prototype, property, {
         get: function () {
-          if (this.tagName.toUpperCase() !== "INPUT") {
+          if (this.tagName.toLowerCase() !== 'input') {
             return originalScrollProperty.get.call(this);
           }
           var inputElement = this;
@@ -916,7 +1018,7 @@ if (document.caretPositionFromPoint == undefined && document.caretRangeFromPoint
     var walk = function (candidate, e, x, y) {
       var node = candidate;
       var c = e.firstChild;
-      if (c == undefined && e.nodeType === Node.TEXT_NODE && e.parentNode.tagName.toUpperCase() !== "TEXTAREA") {
+      if (c == undefined && e.nodeType === Node.TEXT_NODE && e.parentNode.tagName.toLowerCase() !== 'textarea') {
         var range = document.createRange();
         range.setStart(e, 0);
         range.setEnd(e, e.nodeValue.length);
@@ -954,9 +1056,165 @@ if (document.caretPositionFromPoint == undefined && document.caretRangeFromPoint
   };
 }
 
+// Firefox does not support "contextMenu" on MathML elements
+// HTMLElement#hasOwnProperty does not exist in IE 8
+if (Object.prototype.hasOwnProperty.call(HTMLElement.prototype, 'contextMenu')) {
+  document.addEventListener('contextmenu', function (event) {
+    'use strict';
+    var target = event.target;
+    while (target != null && target !== document && target.getAttribute('contextmenu') == null) {
+      target = target.parentNode;
+    }
+    if (target != null && target !== document && !(target instanceof HTMLElement)) {
+      document.documentElement.setAttribute('contextmenu', target.getAttribute('contextmenu'));
+    } else {
+      document.documentElement.removeAttribute('contextmenu');
+    }
+  }, false);
+}
+
+// TODO: https://developer.microsoft.com/en-us/microsoft-edge/platform/issues/4365703/
+// IE 11
+// The default value is 0 if the element is an a, area, button, frame, iframe, input, object, select, textarea, or SVG a element, or is a summary element that is a summary for its parent details. The default value is −1 otherwise.
+if (document.createElement('div').tabIndex === 0) {
+  Object.defineProperty(Element.prototype, 'tabindex', {
+    get: function () {
+      'use strict';
+      var tabIndex = this.getAttribute('tabindex');
+      if (tabIndex != null) {
+        return Number.parseInt(tabIndex, 10);
+      }
+      var tagName = this.tagName.toLowerCase();
+      if (/^(?:a|button|input|select|textarea|summary)$/.test(tagName)) {
+        return 0;
+      }
+      return -1;
+    },
+    set: function (value) {
+      'use strict';
+      this.setAttribute('tabindex', value);
+    }
+  });
+}
+
+
+
+if ('MSBlobBuilder' in window) {
+  // to fix an issue in Edge 18: enter key event is fired even when the user selects something from the datalist?/the list of previously enter values
+  document.addEventListener('keydown', function (event) {
+    'use strict';
+    var input = event.target;
+    if (input.tagName.toLowerCase() === 'input' && input.hasAttribute('list')) {
+      var DOM_VK_DOWN = 40;
+      if (event.keyCode === DOM_VK_DOWN) {
+        input.setAttribute('data-disallow-enter', 'true');
+      }
+      var DOM_VK_ESCAPE = 27;
+      if (event.keyCode === DOM_VK_ESCAPE) {
+        input.removeAttribute('data-disallow-enter');
+      }
+      var DOM_VK_RETURN = 13;
+      if (event.keyCode === DOM_VK_RETURN) {
+        if (input.getAttribute('data-disallow-enter') != null) {
+          input.removeAttribute('data-disallow-enter');
+          event.stopImmediatePropagation();
+        }
+      }
+    }
+  }, true);
+}
+
+
+
+//IE 11
+if (!("innerHTML" in Element.prototype)) {
+  Object.defineProperty(Element.prototype, 'innerHTML', {
+    get: function () {
+      'use strict';
+      return undefined;//TODO:
+    },
+    set: function (value) {
+      'use strict';
+      console.log(value);
+      var xml = document.createElement('div');
+      xml.innerHTML = value;
+      while (this.firstChild != null) {
+        this.removeChild(this.firstChild);
+      }
+      while (xml.firstChild != null) {
+        this.appendChild(xml.firstChild);
+      }
+    },
+    enumerable: false,
+    configurable: true
+  });
+}
+
+// IE 11
+//TODO: mrow.far
+if (!('classList' in Element.prototype)) {
+  (function () {
+    'use strict';
+    function ClassList(element) {
+      this.element = element;
+    }
+    ClassList.prototype.toggle = function (className, force) {//TODO: force
+      var classes = this.element.getAttribute('class') || '';
+      if (force) {
+        if ((' ' + classes + ' ').indexOf(' ' + className + ' ') === -1) {
+          this.element.setAttribute('class', (classes !== '' ? classes + ' ' : '') + className);//TODO:!
+        }
+      } else {
+        if ((' ' + classes + ' ').indexOf(' ' + className + ' ') !== -1) {
+          this.element.setAttribute('class', (' ' + classes + ' ').split(' ' + className + ' ').join(' ').slice(1, -1));
+        }
+      }
+    };
+    //TODO: !
+    Object.defineProperty(Element.prototype, 'classList', {
+      get: function () {
+        return new ClassList(this);
+      },
+      set: function (value) {
+        throw new TypeError();
+      },
+      enumerable: false,
+      configurable: true
+    });
+  }());
+}
+
+
+// TODO: Firefox bug, Edge bug
+// Firefox does not scroll while dragover for <input>
+// IE does not scorll while dragover for <input>
+if (true) {
+  'use strict';
+  var lastScrollLeft = 0;
+  document.addEventListener('dragover', function (event) {
+    var input = event.target;//document.elementFromPoint(event.clientX, event.clientY);
+    if (input.tagName.toLowerCase() === 'input') {
+      if (lastScrollLeft === input.scrollLeft) { // The skip if the web browser has the support of this feature
+        var rect = input.getBoundingClientRect();
+        var distanceToLeftEdge = event.clientX - rect.left;
+        var distanceToRightEdge = input.clientWidth - (event.clientX - rect.left);
+        var dx = distanceToLeftEdge < 9 ? -6 : (distanceToRightEdge < 9 ? +6 : 0);
+        dx = Math.max(dx, -input.scrollLeft);
+        //dx = Math.min(dx, input.scrollWidth - input.clientWidth);
+        if (dx !== 0) {
+          //input.scrollBy(dx, 0);
+          input.scrollLeft = input.scrollLeft + dx;// input.scrollBy() is not supported in Edge 18
+        }
+      }
+      lastScrollLeft = input.scrollLeft;
+    }
+  }, false);
+}
+
 /*global window*/
 
 // Edge 18 - ?
+// Safari < 10.1
 if (window.IDBObjectStore != undefined &&
     window.IDBObjectStore.prototype != undefined &&
     window.IDBObjectStore.prototype.getAll == undefined) {
@@ -1011,10 +1269,40 @@ if (window.IDBObjectStore != undefined &&
   };
 }
 
-/*global window, Element */
+/*global document, window, Element */
 
 (function () {
   "use strict";
+
+  var hasCompositeAddSupport = function () {
+    var ok = false;
+    if (document.body != undefined) {
+      var tmp = document.createElement("div");
+      tmp.style.position = "absolute";
+      tmp.style.overflow = "hidden";
+      tmp.style.width = "1px";
+      tmp.style.height = "1px";
+      document.body.appendChild(tmp);
+      tmp.style.opacity = "0";
+      try {
+        for (var i = 0; i < 2; i += 1) {
+          tmp.animate([
+            {opacity: "0.25"},
+            {opacity: "0.50"}
+          ], {
+            duration: 1000,
+            composite: "add"
+          });
+        }
+      } catch (error) {
+        // an error in Chrome < ?
+        window.console.log(error);
+      }
+      ok = window.getComputedStyle(tmp, undefined).opacity === "0.5";
+      document.body.removeChild(tmp);
+    }
+    return ok;
+  };
 
   var nativeAnimate = Element.prototype.animate;
   var nativeAnimations = [];
@@ -1180,7 +1468,7 @@ if (window.IDBObjectStore != undefined &&
 
   var startTime = 0;
 
-  if (nativeAnimate != undefined) {
+  if (nativeAnimate != undefined && !hasCompositeAddSupport()) {
     Element.prototype.animate = function (frames, keyframeEffectOptions) {
       if (startTime === 0) {
         startTime = Date.now();
@@ -1236,7 +1524,7 @@ if (window.IDBObjectStore != undefined &&
 
 }(this));
 
-/*global window, document, Element */
+/*global document, window, Element */
 
 (function () {
   "use strict";
@@ -1328,9 +1616,10 @@ if (window.IDBObjectStore != undefined &&
     }
   };
 
-  Element.prototype.initDialog = function () {
-    var dialog = this;
-    if (dialog.show == undefined || dialog.showModal == undefined || dialog.close == undefined) {
+  var dialog = document.createElement('dialog');
+  if ((dialog.show == undefined || dialog.showModal == undefined || dialog.close == undefined) && Element.prototype.initDialog == null) {
+    Element.prototype.initDialog = function () {
+      var dialog = this;
       dialog.setAttribute("role", "dialog");
       dialog.show = show;
       dialog.showModal = showModal;
@@ -1351,8 +1640,8 @@ if (window.IDBObjectStore != undefined &&
         event.preventDefault();
         this.close(event.target.getAttribute("value"));
       }, false);
-    }
-  };
+    };
+  }
 
 }());
 
@@ -1361,17 +1650,20 @@ if (window.IDBObjectStore != undefined &&
 (function () {
   "use strict";
 
-  Element.prototype.initDetails = function (summary) {
-    var details = this;
-    //var summary = details.firstElementChild;
-    if (summary.tagName.toUpperCase() !== "SUMMARY") {
-      throw new RangeError("Unexpected " + summary.tagName.toUpperCase());
-    }
-    if (!("open" in details) || !("ontoggle" in details) || summary.tabIndex === -1) {
+  var details = document.createElement('details');
+  var summary = document.createElement('summary');
+  details.appendChild(summary);
+  if ((!("open" in details) || !("ontoggle" in details) || summary.tabIndex === -1) && Element.prototype.initDetails == null) {
+    Element.prototype.initDetails = function (summary) {
+      var details = this;
+      //var summary = details.firstElementChild;
+      if (summary.tagName.toLowerCase() !== 'summary') {
+        throw new RangeError("Unexpected " + summary.tagName.toLowerCase());
+      }
       details.setAttribute("role", "group");
       summary.setAttribute("aria-expanded", "false");// Note: on <summary>
       summary.setAttribute("role", "button");
-      summary.setAttribute("tabindex", "0");
+      summary.tabIndex = 0;
       summary.addEventListener("click", function (event) {
         var summary = this;
         var details = summary.parentNode;
@@ -1408,12 +1700,12 @@ if (window.IDBObjectStore != undefined &&
           this.click();
         }
       }, false);
-    }
-  };
+    };
+  }
 
 }());
 
-/*global document, window, Element, HTMLInputElement*/
+/*global document, window, Element, HTMLInputElement */
 
 (function () {
   "use strict";
@@ -1433,7 +1725,7 @@ if (window.IDBObjectStore != undefined &&
     if (originalScrollLeft != undefined && originalScrollLeft.get != undefined && originalScrollLeft.set != undefined) { // Safari < 10, Opera 12
       Object.defineProperty(HTMLInputElement.prototype, "scrollLeft", {
         get: function () {
-          if (this.tagName.toUpperCase() !== "INPUT") {
+          if (this.tagName.toLowerCase() !== 'input') {
             return originalScrollLeft.get.call(this);
           }
           if (lastDevicePixelRatio !== window.devicePixelRatio) {
@@ -1449,6 +1741,9 @@ if (window.IDBObjectStore != undefined &&
               lastScrollLeftFix = 1;
             } else {
               lastScrollLeftFix = (input.scrollWidth - input.clientWidth) / s;
+              if (lastScrollLeftFix === 0) { // Edge/18.18362 (input.scrollWidth === input.clientWidht)
+                lastScrollLeftFix = 1;
+              }
               if ((1 - lastScrollLeftFix) * (1 - lastScrollLeftFix) < 0.05 * 0.05) {
                 lastScrollLeftFix = 1;
               }
@@ -1474,8 +1769,8 @@ if (document.caretPositionFromPoint == undefined) {
   document.caretPositionFromPoint = function (x, y) {
     "use strict";
     var element = document.elementFromPoint(x, y);
-    if (element.tagName.toUpperCase() !== "INPUT" && 
-        element.tagName.toUpperCase() !== "TEXTAREA") {
+    if (element.tagName.toLowerCase() !== 'input' &&
+        element.tagName.toLowerCase() !== 'textarea') {
       var caretRange = document.caretRangeFromPoint(x, y);
       return {
         offsetNode: caretRange.startContainer,
@@ -1492,7 +1787,7 @@ if (document.caretPositionFromPoint == undefined) {
 
     var value = input.value.replace(/\r\n/g, "\n") + "\n"; // IE - \r\n
     var div = document.createElement("div");
-    div.appendChild(document.createTextNode(value));
+    div.textContent = value;
     div.style.position = "absolute";
     div.style.display = "inline-block";
 
@@ -1519,7 +1814,7 @@ if (document.caretPositionFromPoint == undefined) {
       div.style.webkitBoxSizing = "border-box";
     }
 
-    div.style.whiteSpace = input.tagName.toUpperCase() === "INPUT" ? "nowrap" : "pre";
+    div.style.whiteSpace = input.tagName.toLowerCase() === 'input' ? 'nowrap' : 'pre';
     div.style.wordWrap = inputStyle.wordWrap;
 
     // Firefox does not like font
@@ -1556,25 +1851,338 @@ if (Element.prototype.scrollIntoViewIfNeeded == undefined) {
   };
 }
 
+
+/*global window, document */
+
+(function () {
+  // Frédéric Wang - https://github.com/fred-wang/mathml.css/blob/master/mspace.js
+  /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+   /*global document, Node*/
+  "use strict";
+
+  // layout work (?)
+  var getMathMLSupport = function (tmp) {
+    var table = "<mtable><mtr><mtd><mn>1</mn></mtd><mtd><mn>2</mn></mtd><mtd><mn>3</mn></mtd><mtd><mn>4</mn></mtd></mtr></mtable>";
+    var table2 = table.replace(/<\/mtd><mtd>/g, "</mtd></mtr><mtr><mtd>");
+    var table3 = table.replace(/<mtable>/g, "<mtable columnspacing=\"0em\">");
+    var table4 = table.replace(/<mtable>/g, "<mtable columnlines=\"none solid none\">");
+    var table5 = table.replace(/<mn>1<\/mn>/g, "<mpadded width=\"+0.8em\" lspace=\"+0.4em\"><mn>1</mn></mpadded>");
+    var table6 = table.replace(/<mn>1<\/mn>/g, "<menclose notation=\"circle\"><mn>1</mn></menclose>");
+    var table7 = table2.replace(/<mtable>/g, "<mtable rowspacing=\"0ex\">");
+    var lspaceRspaceText = "<mrow><mi>x</mi><mo lspace=\"0em\" rspace=\"0em\">&it;</mo><mi>y</mi></mrow>" +
+                           "<mrow><mi>x</mi><mo lspace=\"1em\" rspace=\"1em\">&it;</mo><mi>y</mi></mrow>";
+    var msupMsubTest = "<msup><mrow><mtable><mtr><mtd><mn>1</mn></mtd></mtr><mtr><mtd><mn>2</mn></mtd></mtr></mtable></mrow><mrow><mn>2</mn></mrow></msup>" +
+                       "<msup><mrow><mtable><mtr><mtd><mn>1</mn></mtd></mtr><mtr><mtd><mn>2</mn></mtd></mtr><mtr><mtd><mn>3</mn></mtd></mtr></mtable></mrow><mrow><mn>2</mn></mrow></msup>";
+    tmp.innerHTML = "<math>" + table + table2 + table3 + table4 + table5 + table6 + table7 + lspaceRspaceText + msupMsubTest + "</math>";
+    var t = tmp.firstElementChild.firstElementChild;
+    var t2 = t.nextElementSibling;
+    var t3 = t2.nextElementSibling;
+    var t4 = t3.nextElementSibling;
+    var t5 = t4.nextElementSibling;
+    var t6 = t5.nextElementSibling;
+    var t7 = t6.nextElementSibling;
+    var t8 = t7.nextElementSibling;
+    var t9 = t8.nextElementSibling;
+    var t10 = t9.nextElementSibling;
+    var t11 = t10.nextElementSibling;
+    var math = t.getBoundingClientRect().width > t2.getBoundingClientRect().width;
+    var columnspacing = t.getBoundingClientRect().width > t3.getBoundingClientRect().width;
+    var columnlines = t.getBoundingClientRect().width < t4.getBoundingClientRect().width;
+    var mpadded = t.getBoundingClientRect().width < t5.getBoundingClientRect().width;
+    var menclose = t.getBoundingClientRect().width + t.getBoundingClientRect().height < t6.getBoundingClientRect().width + t6.getBoundingClientRect().height;
+    var rowspacing = t2.getBoundingClientRect().height > t7.getBoundingClientRect().height;
+    var lspaceRspace = t9.getBoundingClientRect().width > t8.getBoundingClientRect().width;
+    var msupMsub = t11.lastElementChild.getBoundingClientRect().top < t10.lastElementChild.getBoundingClientRect().top;
+    var tabIndex = t.tabIndex != null; //TODO: ?
+    var draggable = t.draggable != null;
+    return (math ? "" : "no-math ") +
+           (columnspacing ? "" : "no-columnspacing ") +
+           (mpadded ? "" : "no-mpadded ") +
+           (columnlines ? "" : "no-columnlines ") +
+           (menclose ? "" : "no-menclose ") +
+           (rowspacing ? "" : "no-rowspacing ") +
+           (lspaceRspace ? "" : "no-lspace-rspace ") +
+           (msupMsub ? "" : "no-msup-msub ") +
+           (tabIndex ? "" : "no-tabindex ") +
+           (draggable ? "" : "no-draggable ");
+  };
+
+  var queue = function (f) {
+    // why not zero - ?
+    window.setTimeout(f, 1);
+  };
+
+  document.addEventListener("DOMContentLoaded", function (event) {
+    if (window.opera != undefined) {
+      document.body.classList.toggle("css-profile", true);
+      //document.body.classList.toggle("no-draggable", true);
+    }
+    //if (window.XDomainRequest == undefined && !("draggable" in document.documentElement) && !()) {
+    //  document.body.classList.toggle("no-draggable", true);
+    //}
+
+    var tmp = document.createElement("div");
+    tmp.style.position = "absolute";
+    tmp.style.zIndex = "-1";
+    tmp.style.clip = "rect(0 0 0 0)";
+    tmp.style.whiteSpace = "nowrap";
+    tmp.style.width = "0px";
+    tmp.style.height = "0px";
+    tmp.style.overflow = "hidden";
+    document.body.appendChild(tmp);
+    //tmp.innerHTML = "<math><mrow mathcolor=\"#FF0000\"><mn>1</mn></mrow></math>";
+    //var ok = window.getComputedStyle(tmp.firstElementChild.firstElementChild, undefined).color.indexOf("255") !== -1;
+    //var c = ok ? getMathMLSupport(tmp) : "math ";
+    // Mi Browser in Night Mode changes color to rgba(255, 255, 255, 0.5)
+    //TODO: fix math -> no-math
+    var c = getMathMLSupport(tmp).replace(/^no\-math[\s\S]+/g, "math ");
+    document.body.removeChild(tmp);
+    if (c !== "") {
+      var classes = c.replace(/^\s+|\s+$/g, "").split(" ");
+      for (var i = 0; i < classes.length; i += 1) {
+        document.body.classList.toggle(classes[i], true);
+      }
+    }
+    // I want to have focusable and draggable element, menclose[href="#"] can be used, but I need to prevent the navigation.
+    if (c !== "math " || window.opera != undefined) {
+      // Opera supports MathML links too with some special CSS
+      var preventNavigation = function (event) {
+        if (event.button === 0 || event.button === 1) {
+          var target = event.target;
+          while (target != undefined && (target.nodeType !== Node.ELEMENT_NODE || target.getAttribute("href") == undefined)) {
+            target = target.parentNode;
+          }
+          if (target != undefined && target.getAttribute("href") === "#") {
+            var tagName = target.tagName.toLowerCase();
+            if (tagName === 'mrow' || tagName === 'mtd' || tagName === 'menclose') {
+              event.preventDefault();
+            }
+          }
+        }
+      };
+      document.addEventListener("click", preventNavigation, false);
+      document.addEventListener("auxclick", preventNavigation, false);
+    }
+
+    if (c.indexOf('no-lspace-rspace ') !== -1 || c === 'math ') { // no lspace+rspace support based on The operator dictionary
+      document.addEventListener('animationstart', function (event) {
+        var target = event.target;
+        if (target.tagName.toLowerCase() === 'mo' && target.getAttribute('form') !== 'infix') {
+          var c = target.textContent;
+          if (c === '\u2061' || c === '\u2062' || c === '\u2063' ||
+              c === '(' || c === ')' || c === '|' || c === '{' || c === '}' ||
+              (target.nextElementSibling == null && target.previousElementSibling != null) ||
+              (target.previousElementSibling == null && target.nextElementSibling != null)) {
+            queue(function () {
+              target.setAttribute('lspace', '0em');
+              target.setAttribute('rspace', '0em');
+            });
+          }
+        }
+      }, false);
+    }
+    if (c.indexOf('no-columnlines ') !== -1 || c === 'math ') {
+      document.addEventListener('animationstart', function (event) {
+        var table = event.target;
+        if (table.tagName.toLowerCase() === 'mtable') {
+          var columnlines = (table.getAttribute('columnlines') || '').replace(/^\s+|\s+$/g, '').split(/\s+/g);
+          queue(function () {
+            for (var row = table.firstElementChild; row != null; row = row.nextElementSibling) {
+              for (var cell = row.firstElementChild, index = 0; cell != null; cell = cell.nextElementSibling, index += 1) {
+                if (index > 0) {
+                  var linestyle = columnlines[Math.min(index - 1, columnlines.length - 1)];
+                  if (linestyle === 'solid') {
+                    cell.setAttribute('class', 'solidBorderLeft');
+                  }
+                }
+              }
+            }
+          });
+        }
+      }, false);
+    }
+    if (c === 'math ') {
+      document.addEventListener('animationstart', function (event) {
+        var target = event.target;
+        if (target.tagName.toLowerCase() === 'mo') {
+          var c = target.textContent;
+          if (c === '(' || c === ')' || c === '|' || c === '{' || c === '}') {
+            // <mrow><mo>(</mo><mrow>...</mrow><mo>)</mo></mrow>
+            queue(function () {
+              target.parentNode.setAttribute('class', 'fences-container');
+            });
+          }
+        }
+      }, false);
+      var stretchMO = function (target) {
+        var c = target.textContent;
+        if (c === '(' || c === ')' || c === '|' || c === '{' || c === '}') {
+          var fontSize = Number.parseFloat(window.getComputedStyle(target, null).fontSize);
+
+          var height = target.parentNode.getBoundingClientRect().height;
+          var scaleY = height / fontSize;
+          var scaleX = Math.sqrt(Math.sqrt(scaleY));
+
+          if (scaleY > 1.05) {
+            queue(function () {
+              var prefix = 'transform' in document.documentElement.style ? '' : ('OTransform' in document.documentElement.style ? '-o-' : ('msTransform' in document.documentElement.style ? '-ms-' : ('MozTransform' in document.documentElement.style ? '-moz-' : '-webkit-')));
+              var style = prefix + 'transform: ' + 'scale(' + scaleX + ', ' + scaleY + ')';
+              target.setAttribute('style', style);
+              if (window.opera != null) {
+                // Opera 12.18 needs namespace to apply styles
+                target.setAttributeNS('http://www.w3.org/1999/xhtml', 'style', style);
+              }
+            });
+          }
+        }
+      };
+      document.addEventListener('animationstart', function (event) {
+        var target = event.target;
+        if (target.tagName.toLowerCase() === 'mo') {
+          stretchMO(target);
+        }
+      }, false);
+      window.addEventListener('resize', function (event) {
+        var elements = document.getElementsByTagName('mo');
+        for (var i = 0; i < elements.length; i += 1) {
+          stretchMO(elements[i]);
+        }
+      }, false);
+    }
+    if (c.indexOf('no-draggable ') !== -1 || c === 'math ') {
+      if (!('webkitUserDrag' in document.documentElement.style)) {
+        document.addEventListener('animationstart', function (event) {
+          var target = event.target;
+          if (target.tagName.toLowerCase() === 'menclose' && target.getAttribute('draggable') != null) {
+            queue(function () {
+              target.setAttribute('href', '#');
+            });
+          }
+        }, false);
+      }
+    }
+    if (c.indexOf('no-tabindex ') !== -1 || c === 'math ') {
+      document.addEventListener('animationstart', function (event) {
+        var target = event.target;
+        if (target.tagName.toLowerCase() === 'menclose' && target.getAttribute('tabindex') != null) {
+          queue(function () {
+            target.setAttribute('href', '#');
+          });
+        }
+      }, false);
+    }
+    if (c === 'math ') {
+      var getImageData = function (fontSize, font, character) {
+        var canvas = document.createElement('canvas');
+        canvas.width = fontSize;
+        canvas.height = fontSize;
+
+        var ctx = canvas.getContext('2d');
+        ctx.font = font;
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'black';
+        ctx.fillText(character, 0, 0);
+
+        return ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      };
+      var isCharacterSupported = function (character) {
+        // https://stackoverflow.com/questions/22475157/is-there-any-unicode-character-whos-glyph-is-missing-in-all-fonts/22636426#22636426
+        // https://stackoverflow.com/questions/23876361/codepoint-of-the-missing-glyph-box
+        var MISSED_GLYPH = '\uF8FF';
+        var fontSize = Number.parseFloat(window.getComputedStyle(document.body, null).fontSize);
+        var font = window.getComputedStyle(document.body, null).font;
+        var x = getImageData(fontSize, font, character);
+        var y = getImageData(fontSize, font, MISSED_GLYPH);
+        if (x.length !== y.length) {
+          throw new TypeError();
+        }
+        for (var i = 0; i < x.length; i += 1) {
+          if (x[i] !== y[i]) {
+            return true;
+          }
+        }
+        return false;
+      };
+      if (!isCharacterSupported('\u2147') || !isCharacterSupported('\u2148')) {
+        document.addEventListener('animationstart', function (event) {
+          var target = event.target;
+          if (target.tagName.toLowerCase() === 'mi') {
+            var c = target.textContent;
+            if (c === '\u2147' || c === '\u2148') {
+              queue(function () {
+                target.textContent = c === '\u2147' ? 'e' : (c === '\u2148' ? 'i' : c);
+                target.setAttribute('class', 'character-polyfill');
+                target.setAttribute('aria-label', c);
+              });
+            }
+          }
+        }, false);
+      }
+    }
+  }, false);
+
+}());
+
+//if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
+    var timeoutId = 0;
+    window.addEventListener("keydown", function (event) {
+      "use strict";
+      var DOM_VK_ALT = 18;
+      if (event.keyCode === DOM_VK_ALT) {
+        if (timeoutId === 0) {
+          //document.body.classList.toggle("altKey", true);
+          var elements = document.querySelectorAll('[draggable="true"]');
+          for (var i = 0; i < elements.length; i += 1) {
+            elements[i].setAttribute('draggable', 'false');
+          }
+        } else {
+          window.clearTimeout(timeoutId);
+        }
+        // autorepeat of Alt key does not work sometimes (?), but no way to get the Alt state(?)
+        timeoutId = window.setTimeout(function () {
+          timeoutId = 0;
+          //document.body.classList.toggle("altKey", false);
+          var elements = document.querySelectorAll('[draggable="false"]');
+          for (var i = 0; i < elements.length; i += 1) {
+            elements[i].setAttribute('draggable', 'true');
+          }
+        }, 600);
+      }
+    }, false);
+//}
+
 /*global document*/
 
-(function (global) {
+(function () {
 "use strict";
+
+function round(v) {
+  //return (1 + 2**27) * v - ((1 + 2**27) * v - v);
+  //TODO: avoid exponential notation (?)
+  return v.toFixed(6).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '').replace(/^\-0$/g, '0');//TODO: fix
+}
 
 // see https://github.com/gliffy/canvas2svg/blob/master/canvas2svg.js
 // canvas like API
 function SVGRenderingContext2D(svg) {
   // public
-  this.font = null;
+  this.font = "normal 10px sans-serif";
   this.textBaseline = "alphabetic";
+  this.textAlign = "start";
   // private
   this.svg = svg;
   this.svg.setAttribute("font-size", "16");//?
+  this.svg.setAttribute("text-anchor", "middle");
+  this.svg.setAttribute("fill", "currentColor");
   this.x = 0;
   this.y = 0;
   this.sx = 1;
   this.sy = 1;
-  this.path = null;
+  this.path = [];
   this.px = 0;
   this.py = 0;
 }
@@ -1587,23 +2195,30 @@ SVGRenderingContext2D.prototype.scale = function (sx, sy) {
   this.sy *= sy;
 };
 SVGRenderingContext2D.prototype.fillText = function (text, dx, dy) {
-  var fontSize = Number.parseFloat(this.font.replace(/^(italic|normal)\s*/, ""));
+  if (this.textBaseline !== "middle" || this.textAlign !== "center") {
+    throw new RangeError();
+  }
+  var fontSize = Number.parseFloat(this.font.replace(/(?:italic|normal|serif|sans\-serif)/g, ''));
   var fontStyle = this.font.indexOf("italic") !== -1 ? "italic" : "normal";
   var e = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  e.setAttribute("x", this.x / this.sx + dx);
-  e.setAttribute("y", this.y / this.sy + dy - fontSize * 0.25);
-  if (this.sx !== 1 || this.sy !== 1) {
-    e.setAttribute("transform", "scale(" + this.sx + ", " + this.sy + ")");
+  e.setAttribute("x", round(this.x / this.sx + dx));
+  e.setAttribute("y", round(this.y / this.sy + dy));
+  if (round(this.sx) !== round(1) || round(this.sy) !== round(1)) {
+    e.setAttribute("transform", "scale(" + round(this.sx) + ", " + round(this.sy) + ")");
+    //e.setAttribute("dominant-baseline", "middle");//!TODO: FIX!
   }
   if (fontSize !== 16) {
-    e.setAttribute("font-size", fontSize);
+    e.setAttribute("font-size", round(fontSize));
   }
   if (fontStyle !== "normal") {
     e.setAttribute("font-style", fontStyle);
   }
+  e.setAttribute("dy", "0.25em"); //TODO: FIX
+  //e.setAttribute("text-anchor", "middle");
+  //e.setAttribute("dominant-baseline", "central");
   // not supported in Opera, in Edge, in IE, in Safari (no "text-after-edge")
   //e.setAttribute("dominant-baseline", "text-after-edge");
-  e.appendChild(document.createTextNode(text));
+  e.textContent = text;
   this.svg.appendChild(e);
 };
 
@@ -1619,7 +2234,7 @@ SVGRenderingContext2D.prototype.measureText = function (text) {
   tmp.style.height = "0px";
   var span = document.createElement("span");
   tmp.appendChild(span);
-  span.appendChild(document.createTextNode(text));
+  span.textContent = text;
   document.body.appendChild(tmp);
   var rect = span.getBoundingClientRect();
   var width = rect.right - rect.left;
@@ -1644,38 +2259,35 @@ SVGRenderingContext2D.prototype.lineTo = function (x, y) {
   });
 };
 SVGRenderingContext2D.prototype.stroke = function () {
-  if (this.path == null) {
-    throw new RangeError();
-  }
   for (var i = 0; i < this.path.length; i += 1) {
     var p = this.path[i];
     var e = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    e.setAttribute("x1", this.x + p.x0);
-    e.setAttribute("y1", this.y + p.y0);
-    e.setAttribute("x2", this.x + p.x1);
-    e.setAttribute("y2", this.y + p.y1);
-    e.setAttribute("stroke", "black");
+    e.setAttribute("x1", round(this.x + p.x0));
+    e.setAttribute("y1", round(this.y + p.y0));
+    e.setAttribute("x2", round(this.x + p.x1));
+    e.setAttribute("y2", round(this.y + p.y1));
+    e.setAttribute("stroke", "currentColor");
     this.svg.appendChild(e);
   }
 };
 SVGRenderingContext2D.prototype.ellipse = function (cx, cy, rx, ry) {
   var e = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
-  e.setAttribute("cx", this.x + cx);
-  e.setAttribute("cy", this.y + cy);
-  e.setAttribute("rx", rx);
-  e.setAttribute("ry", ry);
-  e.setAttribute("stroke", "black");
+  e.setAttribute("cx", round(this.x + cx));
+  e.setAttribute("cy", round(this.y + cy));
+  e.setAttribute("rx", round(rx));
+  e.setAttribute("ry", round(ry));
+  e.setAttribute("stroke", "currentColor");
   e.setAttribute("fill", "none");
   this.svg.appendChild(e);
 };
 
-global.SVGRenderingContext2D = SVGRenderingContext2D;
+globalThis.SVGRenderingContext2D = SVGRenderingContext2D;
 
-}(this));
+}());
 
 /*global SVGRenderingContext2D, console, document, XMLSerializer*/
 
-(function (global) {
+(function () {
 "use strict";
 
 // see https://github.com/ForbesLindesay-Unmaintained/mathml-to-svg/pulls
@@ -1691,11 +2303,11 @@ MathMLToSVG.makeFont = function (fontSize, fontStyle) {
 };
 
 MathMLToSVG.measure = function (context, node, scriptlevel) {
-  var tagName = node.tagName.toUpperCase();
+  var tagName = node.tagName.toLowerCase();
   var f = MathMLToSVG[tagName];
   if (f == null) {
     console.warn(tagName);
-    f = MathMLToSVG["MROW"];
+    f = MathMLToSVG["mrow"];
   }
   return f(context, node, scriptlevel);
 };
@@ -1703,59 +2315,66 @@ MathMLToSVG.measure = function (context, node, scriptlevel) {
 var MI_MN_MO_MTEXT = function (context, node, scriptlevel) {
   var text = node.textContent.replace(/^\s+|\s+$/g, "");
   var fontSize = MathMLToSVG.getFontSize(scriptlevel);
-  var height = fontSize;
-  var font = MathMLToSVG.makeFont(fontSize, node.tagName.toUpperCase() === "MI" ? "italic" : "normal");
+  var font = MathMLToSVG.makeFont(fontSize, node.tagName.toLowerCase() === "mi" ? "italic" : "normal");
   context.font = font;
-  var width = context.measureText(text).width;
+  var textWidth = context.measureText(text).width;
   var space = 0;
   // MathML3 spec has "Operator dictionary entries" with lspace+rspace table
-  if (node.tagName.toUpperCase() === "MO") {
-    if (text === "\u00D7" || text === "+") {
-      space = 4;
-    } else if (text === "\u2212" || text === "~" || text === "\u2061") {
+  if (node.tagName.toLowerCase() === "mo") {
+    var c = text;
+    if (c === '\u2061' || c === '\u2062' || c === '\u2063' ||
+        c === '(' || c === ')' || c === '|' || c === '{' || c === '}' ||
+        node.nextElementSibling == null || node.previousElementSibling == null) {
       space = 0;
+    } else if (c === "\u00D7" || c === "+") {
+      space = 4;
     } else {
-      console.warn(text);
+      space = 4;
+      console.warn(c);
     }
+    //if (c === "\u2212" || c === "~") {
+    //  space = 0;
+    //}
   }
   space = fontSize * space / 18;
   return {
     baseline: 0,
-    width: space + width + space,
-    height: height,
+    width: space + textWidth + space,
+    height: fontSize,
     render: function () {
       context.translate(space, 0);
       context.font = font;
-      context.textBaseline = "bottom";
-      context.fillText(text, 0, height);
+      context.textBaseline = "middle";
+      context.textAlign = "center";
+      context.fillText(text, textWidth / 2, fontSize / 2);
       context.translate(-space, 0);
     }
   };
 };
 
-MathMLToSVG.MI = MI_MN_MO_MTEXT;
-MathMLToSVG.MN = MI_MN_MO_MTEXT;
-MathMLToSVG.MO = MI_MN_MO_MTEXT;
-MathMLToSVG.MTEXT = MI_MN_MO_MTEXT;
+MathMLToSVG.mi = MI_MN_MO_MTEXT;
+MathMLToSVG.mn = MI_MN_MO_MTEXT;
+MathMLToSVG.mo = MI_MN_MO_MTEXT;
+MathMLToSVG.mtext = MI_MN_MO_MTEXT;
 
-MathMLToSVG.MTABLE = function (context, node, scriptlevel) {
-  var cellSizes = [];
+MathMLToSVG.mtable = function (context, node, scriptlevel) {
+  var sizesByRow = [];
   for (var row = node.firstElementChild; row != null; row = row.nextElementSibling) {
-    if (row.tagName.toUpperCase() === "MTR") {
+    if (row.tagName.toLowerCase() === "mtr") {
       var rowCellSizes = [];
       for (var cell = row.firstElementChild; cell != null; cell = cell.nextElementSibling) {
-        if (cell.tagName.toUpperCase() === "MTD") {
+        if (cell.tagName.toLowerCase() === "mtd") {
           var sizes = MathMLToSVG.measure(context, cell, scriptlevel);
           rowCellSizes.push(sizes);
         }
       }
-      cellSizes.push(rowCellSizes);
+      sizesByRow.push(rowCellSizes);
     }
   }
-  var rows = cellSizes.length;
+  var rows = sizesByRow.length;
   var cols = 0;
   for (var i = 0; i < rows; i += 1) {
-    cols = Math.max(cols, cellSizes[i].length);
+    cols = Math.max(cols, sizesByRow[i].length);
   }
   
   var columnlines = (node.getAttribute("columnlines") || "none").split(" ");
@@ -1774,7 +2393,7 @@ MathMLToSVG.MTABLE = function (context, node, scriptlevel) {
     columnWidths.push(0);
   }
   for (var i = 0; i < rows; i += 1) {
-    var row = cellSizes[i];
+    var row = sizesByRow[i];
     var largestHeightAboveBaseline = 0;
     for (var j = 0; j < row.length; j += 1) {
       var sizes = row[j];
@@ -1805,14 +2424,15 @@ MathMLToSVG.MTABLE = function (context, node, scriptlevel) {
     render: function () {
       
       var y = 0;
-      for (var i = 0; i < cellSizes.length; i += 1) {
-        var row = cellSizes[i];
+      for (var i = 0; i < sizesByRow.length; i += 1) {
+        var row = sizesByRow[i];
         var x = 0;
         for (var j = 0; j < row.length; j += 1) {
           var sizes = row[j];
 
           var ax = (columnWidths[j] - sizes.width) / 2;
           var ay = rowBaselines[i] - (sizes.height - sizes.baseline); // rowalign="baseline"
+
           context.translate(x + ax, y + ay);
           sizes.render();
           context.translate(-x - ax, -y - ay);
@@ -1833,21 +2453,20 @@ MathMLToSVG.MTABLE = function (context, node, scriptlevel) {
   };
 };
 
-MathMLToSVG.MFENCED = function (context, node, scriptlevel) {
+MathMLToSVG.mfenced = function (context, node, scriptlevel) {
   var fontSize = MathMLToSVG.getFontSize(scriptlevel);
   var font = MathMLToSVG.makeFont(fontSize, "normal");
   var measureFence = function (font, text) {
     context.font = font;
     return context.measureText(text).width;
   };
-  var drawFence = function (font, text, scaleX, scaleY, sizes, fontSize) {
-    context.translate(0, sizes.height / 2);
+  var drawFence = function (font, text, textWidth, scaleX, scaleY, fontSize) {
     context.scale(scaleX, scaleY);
     context.font = font;
-    context.textBaseline = "bottom";
-    context.fillText(text, 0, fontSize / 2);
+    context.textBaseline = "middle";
+    context.textAlign = "center";
+    context.fillText(text, textWidth / 2, fontSize / 2);
     context.scale(1 / scaleX, 1 / scaleY);
-    context.translate(0, -sizes.height / 2);
   };
   var open = node.getAttribute("open") || "(";
   var close = node.getAttribute("close") || ")";
@@ -1857,28 +2476,29 @@ MathMLToSVG.MFENCED = function (context, node, scriptlevel) {
   var closeWidth = measureFence(font, close);
   var scaleY = sizes.height / fontSize;
   var scaleX = Math.sqrt(Math.sqrt(scaleY));
-  var round = function (x) {
-    return x * (1 + Math.pow(2, 2)) - x * Math.pow(2, 2);
-  };
-  scaleX = round(scaleX);
-  scaleY = round(scaleY);
   return {
     baseline: sizes.baseline,
-    width: openWidth * scaleX + sizes.width + closeWidth * scaleX,
+    width: openWidth + sizes.width + closeWidth + (scaleX - 1) * openWidth + (scaleX - 1) * closeWidth,
     height: sizes.height,
     render: function () {
-      drawFence(font, open, scaleX, scaleY, sizes, fontSize);
-
+      drawFence(font, open, openWidth, scaleX, scaleY, fontSize);
       context.translate(openWidth * scaleX, 0);
       sizes.render();
+      context.translate(sizes.width, 0);
+      drawFence(font, close, closeWidth, scaleX, scaleY, fontSize);
+      context.translate(-sizes.width, 0);
       context.translate(-openWidth * scaleX, 0);
-
-      context.translate(openWidth * scaleX + sizes.width, 0);
-      drawFence(font, close, scaleX, scaleY, sizes, fontSize);
-      context.translate(-openWidth * scaleX - sizes.width, 0);
     }
   };
 };
+
+function isStretchyOperator(text) {
+  return text === '(' || text === ')' || text === '{' || text === '}' || text === '|';
+}
+
+function isStretchy(node) {
+  return node.tagName.toLowerCase() === 'mo' && isStretchyOperator(node.textContent);
+}
 
 var MATH_MROW = function (context, node, scriptlevel) {
   var baseline = 0;
@@ -1891,9 +2511,25 @@ var MATH_MROW = function (context, node, scriptlevel) {
     baseline = Math.max(baseline, sizes.baseline);
     width += sizes.width;
     height = Math.max(height, sizes.height - sizes.baseline);
+    var stretchy = isStretchy(child);
+    childSizes.push({
+      sizes: sizes,
+      stretchy: stretchy
+    });
     child = child.nextElementSibling;
-    childSizes.push(sizes);
   }
+
+  var fontSize = MathMLToSVG.getFontSize(scriptlevel);
+  var scaleY = (height + baseline) / fontSize;
+  var scaleX = Math.sqrt(Math.sqrt(scaleY));
+  for (var i = 0; i < childSizes.length; i += 1) {
+    var sizes = childSizes[i].sizes;
+    var stretchy = childSizes[i].stretchy;
+    if (stretchy) {
+      width += (scaleX - 1) * sizes.width;
+    }
+  }
+
   return {
     baseline: baseline,
     width: width,
@@ -1901,22 +2537,36 @@ var MATH_MROW = function (context, node, scriptlevel) {
     render: function () {
       var x = 0;
       for (var i = 0; i < childSizes.length; i += 1) {
-        var sizes = childSizes[i];
+        var sizes = childSizes[i].sizes;
+        var stretchy = childSizes[i].stretchy;
         var ay = height - (sizes.height - sizes.baseline);
-        context.translate(x, ay);
+        context.translate(x, 0);
+        if (stretchy) {
+          context.scale(scaleX, scaleY);
+        } else {
+          context.translate(0, ay);
+        }
         sizes.render();
-        context.translate(-x, -ay);
+        if (stretchy) {
+          context.scale(1 / scaleX, 1 / scaleY);
+        } else {
+          context.translate(0, -ay);
+        }
+        context.translate(-x, 0);
+        if (stretchy) {
+          x += (scaleX - 1) * sizes.width;
+        }
         x += sizes.width;
       }
     }
   };
 };
 
-MathMLToSVG.MATH = MATH_MROW;
-MathMLToSVG.MROW = MATH_MROW;
-MathMLToSVG.MTD = MATH_MROW;
+MathMLToSVG.math = MATH_MROW;
+MathMLToSVG.mrow = MATH_MROW;
+MathMLToSVG.mtd = MATH_MROW;
 
-MathMLToSVG.MSTYLE = function (context, node, scriptlevel) {
+MathMLToSVG.mstyle = function (context, node, scriptlevel) {
   //TODO: font-weight
   var sizes = MATH_MROW(context, node, scriptlevel);
   return {
@@ -1929,7 +2579,7 @@ MathMLToSVG.MSTYLE = function (context, node, scriptlevel) {
   };
 };
 
-MathMLToSVG.MPADDED = function (context, node, scriptlevel) {
+MathMLToSVG.mpadded = function (context, node, scriptlevel) {
   var fontSize = MathMLToSVG.getFontSize(scriptlevel);
   var width = Number.parseFloat(node.getAttribute("width")) * fontSize;
   var lspace = Number.parseFloat(node.getAttribute("lspace")) * fontSize;
@@ -1946,7 +2596,7 @@ MathMLToSVG.MPADDED = function (context, node, scriptlevel) {
   };
 };
 
-MathMLToSVG.MFRAC = function (context, node, scriptlevel) {
+MathMLToSVG.mfrac = function (context, node, scriptlevel) {
   var top = node.firstElementChild;
   var bottom = top.nextElementSibling;
   var topSizes = MathMLToSVG.measure(context, top, scriptlevel + 1);
@@ -1983,25 +2633,36 @@ var MSUP_MSUB = function (context, node, scriptlevel) {
   var width = baseSizes.width + exponentSizes.width;
   var fontSize = MathMLToSVG.getFontSize(scriptlevel + 1);
   var height = baseSizes.height + exponentSizes.height - 0.5 * fontSize;
-  var isMSUP = node.tagName.toUpperCase() === "MSUP";
+  var isMSUP = node.tagName.toLowerCase() === "msup";
   return {
     baseline: isMSUP ? 0 : 0.5 * fontSize,
     width: width,
     height: height,
     render: function () {
-      context.translate(0, isMSUP ? 0.5 * fontSize : 0);
+      if (isMSUP) {
+        context.translate(0, 0.5 * fontSize);
+      }
       baseSizes.render();
-      context.translate(baseSizes.width, isMSUP ? -(0.5 * fontSize) : (baseSizes.height - 0.5 * fontSize));
+      if (isMSUP) {
+        context.translate(0, -0.5 * fontSize);
+      }
+      if (!isMSUP) {
+        context.translate(0, baseSizes.height - 0.5 * fontSize);
+      }
+      context.translate(baseSizes.width, 0);
       exponentSizes.render();
-      context.translate(-baseSizes.width, isMSUP ? 0 : -(baseSizes.height - 0.5 * fontSize));
+      context.translate(-baseSizes.width, 0);
+      if (!isMSUP) {
+        context.translate(0, -baseSizes.height + 0.5 * fontSize);
+      }
     }
   };
 };
 
-MathMLToSVG.MSUP = MSUP_MSUB;
-MathMLToSVG.MSUB = MSUP_MSUB;
+MathMLToSVG.msup = MSUP_MSUB;
+MathMLToSVG.msub = MSUP_MSUB;
 
-MathMLToSVG.MENCLOSE = function (context, node, scriptlevel) {
+MathMLToSVG.menclose = function (context, node, scriptlevel) {
   var sizes = MATH_MROW(context, node, scriptlevel); // 1*
   var notation = node.getAttribute("notation").split(" ");
   return {
@@ -2033,12 +2694,12 @@ MathMLToSVG.MENCLOSE = function (context, node, scriptlevel) {
 };
 
 var MSQRT_MROOT = function (context, node, scriptlevel) {
-  var isMSQRT = node.tagName.toUpperCase() === "MSQRT";
+  var isMSQRT = node.tagName.toLowerCase() === "msqrt";
   var surd = "\u221A";
   var fontSize = MathMLToSVG.getFontSize(scriptlevel);
   var font = MathMLToSVG.makeFont(fontSize, "normal");
   context.font = font;
-  var w = context.measureText(surd).width;
+  var surdWidth = context.measureText(surd).width;
   var h = 1;
   var base = isMSQRT ? node : node.firstElementChild;
   var index = isMSQRT ? undefined : base.nextElementSibling;
@@ -2047,34 +2708,35 @@ var MSQRT_MROOT = function (context, node, scriptlevel) {
   var indexSizes = isMSQRT ? undefined : MathMLToSVG.measure(context, index, scriptlevel + 2);
   return {
     baseline: baseSizes.baseline,
-    width: baseSizes.width + w,
+    width: baseSizes.width + surdWidth,
     height: baseSizes.height + h + 2,
     render: function () {
-      context.font = font;
-      context.textBaseline = "bottom";
       context.translate(0, (baseSizes.height - fontSize) / 2 + 2);
-      context.fillText(surd, 0, fontSize);
+      context.font = font;
+      context.textBaseline = "middle";
+      context.textAlign = "center";
+      context.fillText(surd, surdWidth / 2, fontSize / 2);
       context.translate(0, -(baseSizes.height - fontSize) / 2 - 2);
       context.beginPath();
-      context.moveTo(w, 0);
-      context.lineTo(w + baseSizes.width, 0);
+      context.moveTo(surdWidth, 0);
+      context.lineTo(surdWidth + baseSizes.width, 0);
       context.stroke();
-      context.translate(w, h + 2);
+      context.translate(surdWidth, h + 2);
       baseSizes.render();
-      context.translate(-w, -h - 2);
+      context.translate(-surdWidth, -h - 2);
       if (!isMSQRT) {
         context.translate(0, -0.25 * fontSize + 2);
         indexSizes.render();
-        context.translate(0, +0.25 * fontSize - 2);
+        context.translate(0, 0.25 * fontSize - 2);
       }
     }
   };
 };
 
-MathMLToSVG.MSQRT = MSQRT_MROOT;
-MathMLToSVG.MROOT = MSQRT_MROOT;
+MathMLToSVG.msqrt = MSQRT_MROOT;
+MathMLToSVG.mroot = MSQRT_MROOT;
 
-MathMLToSVG.MUNDER = function (context, node, scriptlevel) {
+MathMLToSVG.munder = function (context, node, scriptlevel) {
   var first = node.firstElementChild;
   var second = first.nextElementSibling;
   var firstSizes = MathMLToSVG.measure(context, first, scriptlevel);
@@ -2116,12 +2778,12 @@ MathMLToSVG.drawMathMLElement = function (element) {
   };
 };
 
-global.MathMLToSVG = MathMLToSVG;
+globalThis.MathMLToSVG = MathMLToSVG;
 
-}(this));
+}());
 
 
-(function (global) {
+(function () {
 "use strict";
 
 var operators = {
@@ -2131,11 +2793,21 @@ var operators = {
   ".^": {replacement: ".^", precedence: 7, isRightToLeftAssociative: true},
   "^": {replacement: "^", precedence: 6, isRightToLeftAssociative: true},
   "\u00D7": {replacement: "*", precedence: 5, isRightToLeftAssociative: false},// &times;
-  "\u2061": {replacement: "", precedence: 5, isRightToLeftAssociative: false},//? &#x2061;
-  "\u2062": {replacement: "", precedence: 5, isRightToLeftAssociative: false},//? &#x2062; - INVISIBLE TIMES
+  "\u2061": {replacement: "", precedence: 5, isRightToLeftAssociative: false},// &af;
+  "\u2062": {replacement: "", precedence: 5, isRightToLeftAssociative: false},// &it;
+  "\u2063": {replacement: ",", precedence: -10, isRightToLeftAssociative: false},// &ic;
   "/": {replacement: "/", precedence: 5, isRightToLeftAssociative: false},
+  "\u2215": {replacement: "/", precedence: 5, isRightToLeftAssociative: false},
   "\u2212": {replacement: "-", precedence: 3, isRightToLeftAssociative: false}, // &minus;
   "+": {replacement: "+", precedence: 2, isRightToLeftAssociative: false}
+};
+
+var brackets = {
+  '(': true,
+  '{': true,
+  ')': true,
+  '}': true,
+  '|': true
 };
 
 var fence = function (x, operator, left, format) {
@@ -2148,11 +2820,11 @@ var transformMTABLE = function (node, format) {
   rows += (format === "LaTeX" ? "\\begin{matrix}\n" : "{");
   var isFirstRow = true;
   while (childNode != undefined) {
-    if (childNode.tagName.toUpperCase() === "MTR") {
+    if (childNode.tagName.toLowerCase() === 'mtr') {
       var c = childNode.firstElementChild;
       var row = "";
       while (c != undefined) {
-        if (c.tagName.toUpperCase() === "MTD") {
+        if (c.tagName.toLowerCase() === 'mtd') {
           row += (row !== "" ? (format === "LaTeX" ? " & " : ", ") : "") + fence(transformMathML(c, format), ",", true, format);
         }
         c = c.nextElementSibling;
@@ -2176,22 +2848,22 @@ var transformMathML = function (node, format, inferredMROW) {
   if (format !== "AsciiMath" && format !== "LaTeX") {
     throw new RangeError(format);
   }
-  var tagName = inferredMROW ? "MROW" : node.tagName.toUpperCase();
-  if (tagName === "MATH" ||
-      tagName === "MTD" ||
-      tagName === "MTR" ||
-      tagName === "MROW" ||
-      tagName === "MENCLOSE" ||
-      tagName === "MFENCED" ||
-      tagName === "MO" ||
-      tagName === "MPADDED" ||
-      tagName === "MSTYLE" ||
-      tagName === "MUNDER" ||
-      tagName === "MI" ||
-      tagName === "MN") {
+  var tagName = inferredMROW ? "mrow" : node.tagName.toLowerCase();
+  if (tagName === "math" ||
+      tagName === "mtd" ||
+      tagName === "mtr" ||
+      tagName === "mrow" ||
+      tagName === "menclose" ||
+      tagName === "mfenced" ||
+      tagName === "mo" ||
+      tagName === "mpadded" ||
+      tagName === "mstyle" ||
+      tagName === "munder" ||
+      tagName === "mi" ||
+      tagName === "mn") {
     var s = "";
     var p = 42;
-    if (tagName === "MI" || tagName === "MN" || tagName === "MO") {
+    if (tagName === "mi" || tagName === "mn" || tagName === "mo") {
       // Google Translate inserts <font> tags
       s = node.textContent;
     } else {
@@ -2205,7 +2877,14 @@ var transformMathML = function (node, format, inferredMROW) {
         childNode = childNode.nextElementSibling;
       }
     }
-    if (tagName === "MO") {
+    if (node.firstElementChild != null && node.firstElementChild.tagName.toLowerCase() === 'mo' && brackets[node.firstElementChild.textContent] != null &&
+        node.lastElementChild != null && node.lastElementChild.tagName.toLowerCase() === 'mo' && brackets[node.lastElementChild.textContent] != null) {
+      if (format === "LaTeX") {
+        s = '\\left' + s.slice(0, -1) + '\\right' + s.slice(-1);
+      }
+      p = 42;
+    }
+    if (tagName === "mo") {
       var o = operators[s];
       var precedence = o == undefined ? 0 : o.precedence;
       if (p > precedence) {
@@ -2213,23 +2892,34 @@ var transformMathML = function (node, format, inferredMROW) {
       }
       s = o == undefined ? s : o.replacement;
     }
+    if (tagName === 'mi') {
+      if (s === '\u2147') {
+        s = 'e';
+      } else if (s === '\u2148') {
+        s = 'i';
+      }
+      if (s.length === 1 && s.charCodeAt(0) >= 0x03B1 && s.charCodeAt(0) <= 0x03B1 + 24) {
+        var greek = " alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho varsigma sigma tau upsilon phi chi psi omega ";
+        s = greek.split(' ')[s.charCodeAt(0) - 0x03B1 + 1];
+      }
+    }
     //TODO: fix
-    if (tagName === "MI" && s.length > 1) {
+    if (tagName === "mi" && s.length > 1) {
       s = (format === "LaTeX" ? "\\" : "") + s;
     }
     //
-    return tagName === "MFENCED" ? new TransformResult((format === "LaTeX" ? "\\left" : "") + node.getAttribute("open") + s + (format === "LaTeX" ? "\\right" : "") + node.getAttribute("close"), 42) : new TransformResult(s, p);
+    return tagName === "mfenced" ? new TransformResult((format === "LaTeX" ? "\\left" : "") + (node.getAttribute("open") || "(") + s + (format === "LaTeX" ? "\\right" : "") + (node.getAttribute("close") || ")"), 42) : new TransformResult(s, p);
   }
-  if (tagName === "MSUP") {
+  if (tagName === "msup") {
     return new TransformResult(fence(transformMathML(node.firstElementChild, format), "^", true, format) + "^" + fence(transformMathML(node.firstElementChild.nextElementSibling, format), "^", false, format), operators["^"].precedence);
   }
-  if (tagName === "MSUB") {
+  if (tagName === "msub") {
     //TODO: fix a_(1,2) ?
     var b = transformMathML(node.firstElementChild, format).string;
     var x = transformMathML(node.firstElementChild.nextElementSibling, format).string;
-    return new TransformResult(b + "_" + (x.indexOf(",") !== -1 ? "(" + x + ")" : x), 42); // "(" + ... + ")" ?
+    return new TransformResult(b + "_" + (format === "LaTeX" ? (x.length > 1 ? '{' + x + '}' : x) : (x.indexOf(",") !== -1 ? "(" + x + ")" : x)), 42); // "(" + ... + ")" ?
   }
-  if (tagName === "MFRAC") {
+  if (tagName === "mfrac") {
     var n = transformMathML(node.firstElementChild, format);
     var d = transformMathML(node.firstElementChild.nextElementSibling, format);
     if (format === "LaTeX") {
@@ -2237,16 +2927,16 @@ var transformMathML = function (node, format, inferredMROW) {
     }
     return new TransformResult(fence(n, "/", true, format) + "/" + fence(d, "/", false, format), operators["/"].precedence);
   }
-  if (tagName === "MSQRT") {
+  if (tagName === "msqrt") {
     return new TransformResult((format === "LaTeX" ? "\\" : "") + "sqrt" + (format === "LaTeX" ? "{" : "(") + transformMathML(node, format, true).string + (format === "LaTeX" ? "}" : ")"), 42);
   }
-  if (tagName === "MROOT") {
+  if (tagName === "mroot") {
     return new TransformResult(fence(transformMathML(node.firstElementChild, format), "^", true, format) + "^" + "(" + "1" + "/" + transformMathML(node.firstElementChild.nextElementSibling, format).string + ")", operators["^"].precedence);
   }
-  if (tagName === "MTABLE") {
+  if (tagName === "mtable") {
     return new TransformResult(transformMTABLE(node, format), 42);
   }
-  if (tagName === "MTEXT") {//?
+  if (tagName === "mtext") {//?
     return new TransformResult("", 42);
     //var range = document.createRange();
     //range.setStart(node, 0);
@@ -2254,15 +2944,15 @@ var transformMathML = function (node, format, inferredMROW) {
     //var ss = serialize(range, false, specialSerializer).replace(/^\s+|\s+$/g, "");
     //return new TransformResult(ss === "" ? "" : "text(" + ss + ")", 42);
   }
-  throw new Error("transformMathML:" + tagName);
+  throw new TypeError("transformMathML:" + tagName);
 };
 
-global.transformMathML = transformMathML;
+globalThis.transformMathML = transformMathML;
 
-}(this));
+}());
 /*global transformMathML, XMLSerializer, DOMParser */
 
-(function (global) {
+(function () {
   "use strict";
   
 // TODO: remove?
@@ -2347,8 +3037,9 @@ var serializeMathML = function (element) {
 
 var parseMathML = function (mathml) {
   mathml = mathml.replace(/&times;/g, "\u00D7");
-  mathml = mathml.replace(/&#x2061;/g, "\u2061");
+  mathml = mathml.replace(/&af;/g, "\u2061");
   mathml = mathml.replace(/&minus;/g, "\u2212");
+  mathml = mathml.replace(/&ii;/g, "\u2148");
   return new DOMParser().parseFromString(mathml, "text/xml").firstChild;
 };
 
@@ -2358,7 +3049,20 @@ var mathmlToLaTeX = function (element) {
 
 // TODO: remove "matrix containers" ({useMatrixContainer: false})
 var getMatrixPresentationsFromMatrix = function (matrixContainer, asciimathCode) {
-  var mathmlCode = serializeMathML(matrixContainer);
+  if (matrixContainer.tagName.toLowerCase() === 'menclose' && matrixContainer.getAttribute('notation') === 'none' && matrixContainer.firstElementChild.nextElementSibling === null) {
+    matrixContainer = matrixContainer.firstElementChild;
+    matrixContainer = matrixContainer.cloneNode(true);
+    matrixContainer.removeAttribute('class');
+    var es = matrixContainer.querySelectorAll('*');
+    for (var i = 0; i < es.length; i += 1) {
+      es[i].removeAttribute('style');
+      es[i].removeAttribute('lspace');
+      es[i].removeAttribute('rspace');
+      es[i].removeAttribute('class');
+    }
+  }
+
+  var mathmlCode = serializeMathML(matrixContainer).replace(/\u2061/g, '&ApplyFunction;');
   var result = {};
   result["application/mathml-presentation+xml"] = formatXml("<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\">" + mathmlCode + "</math>");
   result["text/plain"] = "\n" + toMultilineString(getTableFromAsciiMathMatrix(asciimathCode)) + "\n";
@@ -2369,36 +3073,37 @@ var getMatrixPresentationsFromMatrix = function (matrixContainer, asciimathCode)
 
 var formatXml = function (xml) {
   // https://stackoverflow.com/questions/376373/pretty-printing-xml-with-javascript
-  var formatted = "";
-  var padding = "";
-  var nodes = xml.replace(/></g, ">\r\n<").split("\r\n");
+  // Note: /.<\/\w[^>]*>$ is faster than /.+<\/\w[^>]*>$
+  var formatted = '';
+  var padding = '';
+  var nodes = xml.replace(/></g, '>\n<').split('\n');
   for (var i = 0; i < nodes.length; i += 1) {
     var node = nodes[i];
-    var indent = "";
-    if ((/.+<\/\w[^>]*>$/).exec(node) == undefined) {
-      if ((/^<\/\w/).exec(node) != undefined) {
-        padding = padding.slice(0, 0 - "  ".length);
+    var indent = '';
+    if (!/.<\/\w[^>]*>$/.test(node)) {
+      if (/^<\/\w/.test(node)) {
+        padding = padding.slice(0, 0 - '  '.length);
       } else {
-        if ((/^<\w[^>]*[^\/]>.*$/).exec(node) != undefined) {
-          indent = "  ";
+        if (/^<\w[^>]*[^\/]>.*$/.test(node)) {
+          indent = '  ';
         }
       }
     }
-    formatted += padding + node + "\r\n";
+    formatted += padding + node + '\n';
     padding += indent;
   }
   return formatted;
 };
 
-  global.getTableFromAsciiMathMatrix = getTableFromAsciiMathMatrix;
-  global.serializeMathML = serializeMathML;
-  global.parseMathML = parseMathML;
-  global.formatXml = formatXml;
-  global.toMultilineString = toMultilineString;
-  //global.mathmlToLaTeX = mathmlToLaTeX;
-  global.getMatrixPresentationsFromMatrix = getMatrixPresentationsFromMatrix;
+  globalThis.getTableFromAsciiMathMatrix = getTableFromAsciiMathMatrix;
+  //globalThis.serializeMathML = serializeMathML;
+  globalThis.parseMathML = parseMathML;
+  globalThis.formatXml = formatXml;
+  globalThis.toMultilineString = toMultilineString;
+  //globalThis.mathmlToLaTeX = mathmlToLaTeX;
+  globalThis.getMatrixPresentationsFromMatrix = getMatrixPresentationsFromMatrix;
 
-}(this));
+}());
 
 /*global window, document, Node, transformMathML */
 
@@ -2484,7 +3189,7 @@ var serialize = function (range, isLineStart) {
 
   if (node.nodeType === Node.TEXT_NODE) {
     if (node !== startContainer || node !== endContainer) {
-      throw new Error();
+      throw new TypeError();
     }
     var nodeValue = node.nodeValue.slice(startOffset, endOffset);
     //var nodeValue = node.nodeValue.slice(node === startContainer ? startOffset : 0, node === endContainer ? endOffset : node.nodeValue.length);
@@ -2507,11 +3212,11 @@ var serialize = function (range, isLineStart) {
     var x = undefined;
     if (isBoundaryPoint(startContainer, startOffset, "start", node) &&
         isBoundaryPoint(endContainer, endOffset, "end", node)) {
-      var tagName = node.tagName.toUpperCase();
-      if (tagName === "MATH" || isMathMLTagName(tagName)) {
+      var tagName = node.tagName.toLowerCase();
+      if (tagName === 'math' || isMathMLTagName(tagName)) {
         x = transformMathML(node, "AsciiMath").string;
       }
-      if (tagName === "BR") {
+      if (tagName === 'br') {
         x = "\n";
       }
     }
@@ -2564,16 +3269,16 @@ var serializeAsPlainText = function (range) {
 };
 
 var isMathMLTagName = function (tagName) {
-  if (tagName.charCodeAt(0) === "M".charCodeAt(0)) {
+  if (tagName.charCodeAt(0) === 'm'.charCodeAt(0)) {
     switch (tagName) {
-      case "MAIN":
-      case "MAP":
-      case "MARK":
-      case "MATH":
-      case "MENU":
-      case "MENUITEM":
-      case "META":
-      case "METER":
+      case 'main':
+      case 'map':
+      case 'mark':
+      case 'math':
+      case 'menu':
+      case 'menuitem':
+      case 'meta':
+      case 'meter':
         return false;
     }
     return true;
@@ -2590,8 +3295,8 @@ var serializeAsHTML = function (range) {
 
 var onCopyOrDragStart = function (event) {
   var dataTransfer = event.type === "copy" ? event.clipboardData : event.dataTransfer;
-  var tagName = event.target.nodeType === Node.ELEMENT_NODE ? event.target.tagName.toUpperCase() : "";
-  if (tagName !== "INPUT" && tagName !== "TEXTAREA" && (tagName !== "A" || event.type === "copy") && tagName !== "IMG") {
+  var tagName = event.target.nodeType === Node.ELEMENT_NODE ? event.target.tagName.toLowerCase() : '';
+  if (tagName !== 'input' && tagName !== 'textarea' && (tagName !== 'a' || event.type === 'copy') && tagName !== 'img') {
     //! dataTransfer.effectAllowed throws an exception in FireFox if tagName is INPUT or TEXTAREA
     if ((event.type === "copy" || dataTransfer.effectAllowed === "uninitialized") && !event.defaultPrevented) {
       var selection = window.getSelection();
@@ -2605,7 +3310,7 @@ var onCopyOrDragStart = function (event) {
           htmlText += serializeAsHTML(range);
           plainText += serializeAsPlainText(range);
         }
-        dataTransfer.setData("Text", plainText);
+        dataTransfer.setData("text/plain", plainText);
         dataTransfer.setData("text/html", htmlText);
         if (event.type === "copy") {
           event.preventDefault();
@@ -2617,72 +3322,19 @@ var onCopyOrDragStart = function (event) {
   }
 };
 
-document.addEventListener("copy", onCopyOrDragStart, false);
-document.addEventListener("dragstart", onCopyOrDragStart, false);
+if (typeof document !== 'undefined') {
+  document.addEventListener("copy", onCopyOrDragStart, false);
+  document.addEventListener("dragstart", onCopyOrDragStart, false);
+}
 
 //!
-window.rangeInnerText = serializeAsPlainText;
+globalThis.rangeInnerText = serializeAsPlainText;
 
 }());
 
-/*global BigInt*/
-
-(function (global) {
-  "use strict";
-  if (typeof BigInt !== "undefined" && BigInt(9007199254740991) + BigInt(2) - BigInt(2) === BigInt(9007199254740991)) {
-    var BigIntWrapper = function () {
-    };
-    var prefix = function (radix) {
-      if (radix === 2) {
-        return "0b";
-      }
-      if (radix === 8) {
-        return "0o";
-      }
-      if (radix === 16) {
-        return "0x";
-      }
-      throw new RangeError();
-    };
-    BigIntWrapper.parseInt = function (string, radix) {
-      return BigInt(radix === 10 ? string : prefix(radix) + string);
-    };
-    BigIntWrapper.compareTo = function (a, b) {
-      return a < b ? -1 : (b < a ? +1 : 0);
-    };
-    BigIntWrapper.add = function (a, b) {
-      return a + b;
-    };
-    BigIntWrapper.subtract = function (a, b) {
-      return a - b;
-    };
-    BigIntWrapper.multiply = function (a, b) {
-      return a * b;
-    };
-    BigIntWrapper.divide = function (a, b) {
-      return a / b;
-    };
-    BigIntWrapper.remainder = function (a, b) {
-      return a % b;
-    };
-    BigIntWrapper.negate = function (a) {
-      return -a;
-    };
-    BigIntWrapper.fromNumber = function (number) {
-      return BigInt(number);
-    };
-    BigIntWrapper.toNumber = function (bigint) {
-      return Number(bigint);
-    };
-    global.BigIntWrapper = BigIntWrapper;
-  }
-}(this));
-
-
-/*jslint plusplus: true, vars: true, indent: 2 */
-
-(function (global) {
-  "use strict";
+(function () {
+"use strict";
+/*jslint plusplus: true, vars: true, indent: 2*/
 
   // BigInteger.js
   // Available under Public Domain
@@ -2807,13 +3459,16 @@ window.rangeInnerText = serializeAsPlainText;
     return new BigIntegerInternal(sign, magnitude, length);
   };
 
-  BigIntegerInternal.parseInt = function (s, radix) {
-    if (radix == undefined) {
-      radix = 10;
+  var fromNumber = function (n) {
+    if (n >= BASE || 0 - n >= BASE) {
+      throw new RangeError();
     }
-    if (radix !== 10 && (radix < 2 || radix > 36 || radix !== Math.floor(radix))) {
-      throw new RangeError("radix argument must be an integer between 2 and 36");
-    }
+    var a = createArray(1);
+    a[0] = n < 0 ? 0 - n : 0 + n;
+    return createBigInteger(n < 0 ? 1 : 0, a, n === 0 ? 0 : 1);
+  };
+
+  var fromString = function (s) {
     var length = s.length;
     if (length === 0) {
       throw new RangeError();
@@ -2828,17 +3483,24 @@ window.rangeInnerText = serializeAsPlainText;
       from = 1;
       sign = 1;
     }
-
+    var radix = 10;
+    if (from === 0 && s.length >= 2 && s.charCodeAt(0) === 48) {
+      if (s.charCodeAt(1) === 98) {
+        radix = 2;
+        from = 2;
+      } else if (s.charCodeAt(1) === 111) {
+        radix = 8;
+        from = 2;
+      } else if (s.charCodeAt(1) === 120) {
+        radix = 16;
+        from = 2;
+      }
+    }
     length -= from;
     if (length === 0) {
       throw new RangeError();
     }
-    if (length < 53 && Math.pow(radix, length) <= BASE) {
-      var value = parseInteger(s, from, from + length, radix);
-      var a = createArray(1);
-      a[0] = value;
-      return createBigInteger(value === 0 ? 0 : sign, a, value === 0 ? 0 : 1);
-    }
+
     var groupLength = 0;
     var groupRadix = 1;
     var limit = fastTrunc(BASE / radix);
@@ -2873,6 +3535,39 @@ window.rangeInnerText = serializeAsPlainText;
     return createBigInteger(size === 0 ? 0 : sign, magnitude, size);
   };
 
+  BigIntegerInternal.BigInt = function (x) {
+    if (typeof x === "number") {
+      return fromNumber(x);
+    }
+    if (typeof x === "string") {
+      return fromString(x);
+    }
+    throw new RangeError();
+  };
+
+  BigIntegerInternal.toNumber = function (a) {
+    if (a.length === 0) {
+      return 0;
+    }
+    if (a.length === 1) {
+      return a.sign === 1 ? 0 - a.magnitude[0] : a.magnitude[0];
+    }
+    if (BASE + 1 !== BASE) {
+      throw new RangeError();
+    }
+    var x = a.magnitude[a.length - 1];
+    var y = a.magnitude[a.length - 2];
+    var i = a.length - 3;
+    while (i >= 0 && a.magnitude[i] === 0) {
+      i -= 1;
+    }
+    if (i >= 0 && y % 2 === 1) {
+      y += 1;
+    }
+    var z = (x * BASE + y) * Math.pow(BASE, a.length - 2);
+    return a.sign === 1 ? 0 - z : z;
+  };
+
   var compareMagnitude = function (a, b) {
     if (a.length !== b.length) {
       return a.length < b.length ? -1 : +1;
@@ -2886,7 +3581,7 @@ window.rangeInnerText = serializeAsPlainText;
     return 0;
   };
 
-  BigIntegerInternal.compareTo = function (a, b) {
+  var compareTo = function (a, b) {
     var c = a.sign === b.sign ? compareMagnitude(a, b) : 1;
     return a.sign === 1 ? 0 - c : c; // positive zero will be returned for c === 0
   };
@@ -2951,13 +3646,13 @@ window.rangeInnerText = serializeAsPlainText;
     if (a.length === 0 || b.length === 0) {
       return createBigInteger(0, createArray(0), 0);
     }
-    var resultSign = a.sign === 1 ? 1 - b.sign : b.sign;
     if (a.length === 1 && a.magnitude[0] === 1) {
-      return createBigInteger(resultSign, b.magnitude, b.length);
+      return createBigInteger(a.sign === 1 ? 1 - b.sign : b.sign, b.magnitude, b.length);
     }
     if (b.length === 1 && b.magnitude[0] === 1) {
-      return createBigInteger(resultSign, a.magnitude, a.length);
+      return createBigInteger(a.sign === 1 ? 1 - b.sign : b.sign, a.magnitude, a.length);
     }
+    var resultSign = a.sign === 1 ? 1 - b.sign : b.sign;
     var resultLength = a.length + b.length;
     var result = createArray(resultLength);
     var i = -1;
@@ -3152,8 +3847,46 @@ window.rangeInnerText = serializeAsPlainText;
     return divideAndRemainder(a, b, 0);
   };
 
-  BigIntegerInternal.negate = function (a) {
+  BigIntegerInternal.unaryMinus = function (a) {
     return createBigInteger(a.length === 0 ? a.sign : 1 - a.sign, a.magnitude, a.length);
+  };
+
+  BigIntegerInternal.equal = function (a, b) {
+    return compareTo(a, b) === 0;
+  };
+  BigIntegerInternal.lessThan = function (a, b) {
+    return compareTo(a, b) < 0;
+  };
+  BigIntegerInternal.greaterThan = function (a, b) {
+    return compareTo(a, b) > 0;
+  };
+
+  BigIntegerInternal.exponentiate = function (a, b) {
+    var n = BigIntegerInternal.toNumber(b);
+    if (n < 0) {
+      throw new RangeError();
+    }
+    if (n > 9007199254740991) {
+      var y = BigIntegerInternal.toNumber(a);
+      if (y === 0 || y === -1 || y === +1) {
+        return BigIntegerInternal.BigInt(y === -1 && BigIntegerInternal.toNumber(BigIntegerInternal.remainder(b, BigIntegerInternal.BigInt(2))) === 0 ? +1 : y);
+      }
+      throw new RangeError();
+    }
+    var accumulator = BigIntegerInternal.BigInt(1);
+    if (n > 0) {
+      var x = a;
+      while (n >= 2) {
+        var t = Math.floor(n / 2);
+        if (t * 2 !== n) {
+          accumulator = BigIntegerInternal.multiply(accumulator, x);
+        }
+        n = t;
+        x = BigIntegerInternal.multiply(x, x);
+      }
+      accumulator = BigIntegerInternal.multiply(accumulator, x);
+    }
+    return accumulator;
   };
 
   BigIntegerInternal.prototype.toString = function (radix) {
@@ -3222,30 +3955,69 @@ window.rangeInnerText = serializeAsPlainText;
     return result;
   };
 
-  BigIntegerInternal.fromNumber = function (x) {
-    if (x >= BASE || 0 - x >= BASE) {
-      throw new RangeError();
-    }
-    var a = createArray(1);
-    a[0] = x < 0 ? 0 - x : 0 + x;
-    return createBigInteger(x < 0 ? 1 : 0, a, x === 0 ? 0 : 1);
+  function BigIntWrapper() {
+  }
+
+  BigIntWrapper.BigInt = function (x) {
+    return BigInt(x);
+  };
+  BigIntWrapper.toNumber = function (bigint) {
+    return Number(bigint);
+  };
+  BigIntWrapper.add = function (a, b) {
+    return a + b;
+  };
+  BigIntWrapper.subtract = function (a, b) {
+    return a - b;
+  };
+  BigIntWrapper.multiply = function (a, b) {
+    return a * b;
+  };
+  BigIntWrapper.divide = function (a, b) {
+    return a / b;
+  };
+  BigIntWrapper.remainder = function (a, b) {
+    return a % b;
+  };
+  BigIntWrapper.unaryMinus = function (a) {
+    return -a;
+  };
+  BigIntWrapper.equal = function (a, b) {
+    return a === b;
+  };
+  BigIntWrapper.lessThan = function (a, b) {
+    return a < b;
+  };
+  BigIntWrapper.greaterThan = function (a, b) {
+    return a > b;
   };
 
-  BigIntegerInternal.toNumber = function (a) {
-    if (a.length === 0) {
-      return 0;
+  BigIntWrapper.exponentiate = function (a, b) {
+    var n = BigIntWrapper.toNumber(b);
+    if (n < 0) {
+      throw new RangeError();
     }
-    if (a.length === 1) {
-      return a.sign === 1 ? 0 - a.magnitude[0] : a.magnitude[0];
+    if (n > 9007199254740991) {
+      var y = BigIntWrapper.toNumber(a);
+      if (y === 0 || y === -1 || y === +1) {
+        return BigIntWrapper.BigInt(y === -1 && BigIntWrapper.toNumber(BigIntWrapper.remainder(b, BigIntWrapper.BigInt(2))) === 0 ? +1 : y);
+      }
+      throw new RangeError();
     }
-    //?
-    var x = 0;
-    var i = a.length;
-    while (--i >= 0) {
-      x *= BASE;
-      x += a.magnitude[i];
+    var accumulator = BigIntWrapper.BigInt(1);
+    if (n > 0) {
+      var x = a;
+      while (n >= 2) {
+        var t = Math.floor(n / 2);
+        if (t * 2 !== n) {
+          accumulator = BigIntWrapper.multiply(accumulator, x);
+        }
+        n = t;
+        x = BigIntWrapper.multiply(x, x);
+      }
+      accumulator = BigIntWrapper.multiply(accumulator, x);
     }
-    return a.sign === 1 ? 0 - x : x;
+    return accumulator;
   };
 
   // noinline
@@ -3255,26 +4027,17 @@ window.rangeInnerText = serializeAsPlainText;
     };
   };
 
-  var Internal = global.BigIntWrapper != undefined ? global.BigIntWrapper : BigIntegerInternal;
+  var Internal = typeof BigInt !== "undefined" && BigInt(9007199254740991) + BigInt(2) - BigInt(2) === BigInt(9007199254740991) ? BigIntWrapper : BigIntegerInternal;
 
-  var parseInt = n(function (string, radix) {
-    return Internal.parseInt(string, radix);
+  var toNumber = n(function (a) {
+    return Internal.toNumber(a);
   });
   var valueOf = function (x) {
     if (typeof x === "number") {
-      return Internal.fromNumber(x);
+      return Internal.BigInt(x);
     }
     return x;
   };
-  var compareTo = n(function (x, y) {
-    if (typeof x === "number") {
-      return x < Internal.toNumber(y) ? -1 : +1;
-    }
-    if (typeof y === "number") {
-      return Internal.toNumber(x) < y ? -1 : +1;
-    }
-    return Internal.compareTo(x, y);
-  });
   var toResult = function (x) {
     var value = Internal.toNumber(x);
     if (value >= -9007199254740991 && value <= +9007199254740991) {
@@ -3311,26 +4074,67 @@ window.rangeInnerText = serializeAsPlainText;
     var b = valueOf(y);
     return toResult(Internal.remainder(a, b));
   });
-  var negate = n(function (x) {
+  var exponentiate = n(function (x, y) {
     var a = valueOf(x);
-    return Internal.negate(a);
+    var b = valueOf(y);
+    return toResult(Internal.exponentiate(a, b));
+  });
+  var unaryMinus = n(function (x) {
+    var a = valueOf(x);
+    return Internal.unaryMinus(a);
+  });
+  var equal = n(function (x, y) {
+    if (typeof x === "number") {
+      return x === Internal.toNumber(y);
+    }
+    if (typeof y === "number") {
+      return Internal.toNumber(x) === y;
+    }
+    return Internal.equal(x, y);
+  });
+  var lessThan = n(function (x, y) {
+    if (typeof x === "number") {
+      return x < Internal.toNumber(y);
+    }
+    if (typeof y === "number") {
+      return Internal.toNumber(x) < y;
+    }
+    return Internal.lessThan(x, y);
+  });
+  var greaterThan = n(function (x, y) {
+    if (typeof x === "number") {
+      return x > Internal.toNumber(y);
+    }
+    if (typeof y === "number") {
+      return Internal.toNumber(x) > y;
+    }
+    return Internal.greaterThan(x, y);
   });
 
   function BigInteger() {
   }
-  BigInteger.parseInt = function (string, radix) {
-    var value = 0 + Number.parseInt(string, radix == undefined ? 10 : radix);
+
+  // Conversion from String:
+  // Conversion from Number:
+  BigInteger.BigInt = function (x) {
+    if (typeof x === "number") {
+      return x;
+    }
+    var value = 0 + Number(x);
     if (value >= -9007199254740991 && value <= +9007199254740991) {
       return value;
     }
-    return parseInt(string, radix);
+    return Internal.BigInt(x);
   };
-  BigInteger.compareTo = function (x, y) {
-    if (typeof x === "number" && typeof y === "number") {
-      return x < y ? -1 : (y < x ? +1 : 0);
+  // Conversion to Number:
+  BigInteger.toNumber = function (x) {
+    if (typeof x === "number") {
+      return x;
     }
-    return compareTo(x, y);
+    return toNumber(x);
   };
+
+  // Arithmetic:
   BigInteger.add = function (x, y) {
     if (typeof x === "number" && typeof y === "number") {
       var value = x + y;
@@ -3374,105 +4178,230 @@ window.rangeInnerText = serializeAsPlainText;
     }
     return remainder(x, y);
   };
-  BigInteger.negate = function (x) {
+  BigInteger.unaryMinus = function (x) {
     if (typeof x === "number") {
       return 0 - x;
     }
-    return negate(x);
+    return unaryMinus(x);
   };
-  BigInteger.fromNumber = function (n) {
-    return n;
-  };
-  BigInteger.toNumber = function (x) {
-    if (typeof x === "number") {
-      return x;
+
+  // Comparison:
+  BigInteger.equal = function (x, y) {
+    if (typeof x === "number" && typeof y === "number") {
+      return x === y;
     }
-    return Internal.toNumber(x);
+    return equal(x, y);
+  };
+  BigInteger.lessThan = function (x, y) {
+    if (typeof x === "number" && typeof y === "number") {
+      return x < y;
+    }
+    return lessThan(x, y);
+  };
+  BigInteger.greaterThan = function (x, y) {
+    if (typeof x === "number" && typeof y === "number") {
+      return x > y;
+    }
+    return greaterThan(x, y);
   };
 
-  global.BigInteger = BigInteger;
+  BigInteger.exponentiate = function (x, y) {
+    if (typeof x === "number" && typeof y === "number" && y >= 0 && y < 53) { // Math.log2(9007199254740991 + 1)
+      var value = 0 + Math.pow(x, y);
+      if (value >= -9007199254740991 && value <= 9007199254740991) {
+        return value;
+      }
+    }
+    return exponentiate(x, y);
+  };
 
-}(this));
+  self.BigInteger = BigInteger;
 
-/*global BigInteger*/
-
+})();
 (function () {
 "use strict";
 
-// floor(log(n) / log(b)), n >= 1, base >= 2, https://programmingpraxis.com/contents/standard-prelude/
+
+// floor(log(n) / log(b)), n >= 1, base >= 2
+// https://programmingpraxis.com/contents/standard-prelude/
 function ilogb(n, base) {
-  var i = 0;
-  while (BigInteger.compareTo(n, BigInteger.pow(base, BigInteger.pow(2, i))) >= 0) {
-    i = BigInteger.add(i, 1);
+  var i = BigInteger.BigInt(0);
+  while (!BigInteger.lessThan(n, BigInteger.exponentiate(base, BigInteger.exponentiate(BigInteger.BigInt(2), i)))) {
+    i = BigInteger.add(i, BigInteger.BigInt(1));
   }
-  var e = 0;
-  var t = 1;
-  while (BigInteger.compareTo(i, 0) >= 0) {
-    var b = BigInteger.pow(2, i);
-    if (BigInteger.compareTo(n, BigInteger.multiply(t, BigInteger.pow(base, b))) >= 0) {
-      t = BigInteger.multiply(t, BigInteger.pow(base, b));
+  var e = BigInteger.BigInt(0);
+  var t = BigInteger.BigInt(1);
+  while (!BigInteger.lessThan(i, BigInteger.BigInt(0))) {
+    var b = BigInteger.exponentiate(BigInteger.BigInt(2), i);
+    if (!BigInteger.lessThan(n, BigInteger.multiply(t, BigInteger.exponentiate(base, b)))) {
+      t = BigInteger.multiply(t, BigInteger.exponentiate(base, b));
       e = BigInteger.add(e, b);
     }
-    i = BigInteger.subtract(i, 1);
+    i = BigInteger.subtract(i, BigInteger.BigInt(1));
   }
   return e;
 }
 
 function ilog2(n) {
-  return ilogb(n, 2);
+  return ilogb(n, BigInteger.BigInt(2));
 }
 
+// floor(S**(1/n)), S >= 1, n >= 2
+// https://en.wikipedia.org/wiki/Methods_of_computing_square_roots#Babylonian_method
 // https://stackoverflow.com/a/15979957/839199y
 function nthRoot(S, n) {
-  if (n === 2) {
+  if (n < 2 || n % 2 === 0 && BigInteger.lessThan(S, 0)) {
+    throw new RangeError();
+  }
+  if (!BigInteger.lessThan(BigInteger.BigInt(2), n)) {
     var t = BigInteger.toNumber(S);
-    if (t < 4503599627370496) { // 2**52
-      return BigInteger.fromNumber(Math.floor(Math.sqrt(t + 0.5)));
+    if (t < (9007199254740991 + 1) / 2) {
+      return BigInteger.BigInt(Math.floor(Math.sqrt(t + 0.5)));
     }
-    if (t < 4503599627370496 * 4503599627370496) { // 2**104
-      var y = BigInteger.fromNumber(Math.floor(Math.sqrt(t) + 0.5));
-      if (BigInteger.compareTo(BigInteger.multiply(y, y), S) > 0) {
-        y = BigInteger.subtract(y, 1);
+    if (t < (9007199254740991 + 1) / 2 * (9007199254740991 + 1) / 2) {
+      var y = BigInteger.BigInt(Math.floor(Math.sqrt(t) + 0.5));
+      if (BigInteger.lessThan(S, BigInteger.multiply(y, y))) {
+        y = BigInteger.subtract(y, BigInteger.BigInt(1));
       }
       return y;
     }
   }
   var e = ilog2(S);
-  if (e < n) {
-    return 1;
+  if (BigInteger.lessThan(e, n)) {
+    return BigInteger.BigInt(1);
   }
-  var f = BigInteger.divide(BigInteger.add(e, n), BigInteger.multiply(2, n));
-  var x = BigInteger.multiply(BigInteger.add(nthRoot(BigInteger.divide(S, BigInteger.pow(2, f * n)), n), 1), BigInteger.pow(2, f));
-  var xprev = BigInteger.add(x, 1);
-  while (BigInteger.compareTo(xprev, x) > 0) {
+  var f = BigInteger.divide(BigInteger.add(e, n), BigInteger.multiply(BigInteger.BigInt(2), n));
+  var x = BigInteger.multiply(BigInteger.add(nthRoot(BigInteger.divide(S, BigInteger.exponentiate(BigInteger.BigInt(2), BigInteger.multiply(f, n))), n), BigInteger.BigInt(1)), BigInteger.exponentiate(BigInteger.BigInt(2), f));
+  var xprev = BigInteger.add(x, BigInteger.BigInt(1));
+  while (BigInteger.lessThan(x, xprev)) {
     xprev = x;
-    x = BigInteger.divide(BigInteger.add(BigInteger.multiply(x, BigInteger.subtract(n, 1)), BigInteger.divide(S, BigInteger.pow(x, n - 1))), n);
+    x = BigInteger.divide(BigInteger.add(BigInteger.multiply(x, BigInteger.subtract(n, BigInteger.BigInt(1))), BigInteger.divide(S, BigInteger.exponentiate(x, BigInteger.subtract(n, BigInteger.BigInt(1))))), n);
   }
   return xprev;
 }
 
-function powBig(x, count, accumulator) {
-  accumulator = accumulator == undefined ? 1 : accumulator;
-  if (count < 0) {
-    throw new RangeError();
-  }
-  if (count > 9007199254740991) {
-    throw new RangeError();
-  }
-  return (count < 1 ? accumulator : (2 * Math.floor(count / 2) !== count ? powBig(x, count - 1, BigInteger.multiply(accumulator, x)) : powBig(BigInteger.multiply(x, x), Math.floor(count / 2), accumulator)));
+self.nthRoot = nthRoot;
+
+})();
+(function () {
+"use strict";
+
+
+function min(a, b) {
+  return BigInteger.lessThan(a, b) ? a : b;
 }
 
-function pow(x, count) {
-  if (typeof x === "number" && count >= 0 && count < 53) {
-    var value = 0 + Math.pow(x, count);
-    if (value >= -9007199254740991 && value <= 9007199254740991) {
-      return value;
+function modPow(base, exponent, modulus, accumulator) {
+  return !BigInteger.lessThan(BigInteger.BigInt(0), exponent) ? accumulator : modPow(BigInteger.remainder(BigInteger.multiply(base, base), modulus), BigInteger.divide(exponent, BigInteger.BigInt(2)), modulus, !BigInteger.lessThan(BigInteger.remainder(exponent, BigInteger.BigInt(2)), BigInteger.BigInt(1)) ? BigInteger.remainder(BigInteger.multiply(accumulator, base), modulus) : accumulator);
+}
+
+function bitLength(n) {
+  var x = BigInteger.toNumber(n);
+  return x < 1 / 0 ? Math.floor(Math.log(x) / Math.log(2)) : 1024 + bitLength(BigInteger.divide(n, BigInteger.exponentiate(2, 1024)));
+}
+
+function log(n) {
+  //n = f * 2**e
+  //Math.log(n) = Math.log(f) + Math.log(2) * e;
+  var x = BigInteger.toNumber(n);
+  return x < 1 / 0 ? Math.log(x) : Math.log(BigInteger.toNumber(BigInteger.divide(n, BigInteger.exponentiate(2, bitLength(n) - 53))) + Math.log(2) * (bitLength(n) - 53));
+}
+
+// isPrime implementation is stolen from:
+// https://github.com/peterolson/BigInteger.js
+// https://en.wikipedia.org/wiki/Miller%E2%80%93Rabin_primality_test#Deterministic_variants
+function isPrime(n) {
+  if (BigInteger.lessThan(n, BigInteger.BigInt(2))) {
+    throw new RangeError();
+  }
+  if (!BigInteger.lessThan(BigInteger.BigInt(2), n)) {
+    return true;
+  }
+  if (BigInteger.lessThan(BigInteger.remainder(n, BigInteger.BigInt(2)), BigInteger.BigInt(1))) {
+    return false;
+  }
+  var s = 0;
+  var d = BigInteger.subtract(n, BigInteger.BigInt(1));
+  while (BigInteger.lessThan(BigInteger.remainder(d, BigInteger.BigInt(2)), BigInteger.BigInt(1))) {
+    d = BigInteger.divide(d, BigInteger.BigInt(2));
+    s += 1;
+  }
+  for (var a = min(BigInteger.subtract(n, BigInteger.BigInt(1)), BigInteger.BigInt(Math.floor(2 * Math.pow(log(n), 2)))); !BigInteger.lessThan(a, BigInteger.BigInt(2)); a = BigInteger.subtract(a, BigInteger.BigInt(1))) {
+    var adn = modPow(a, d, n, BigInteger.BigInt(1));
+    if (BigInteger.lessThan(adn, BigInteger.BigInt(1)) || BigInteger.lessThan(BigInteger.BigInt(1), adn)) {
+      for (var r = 0, x = adn; BigInteger.lessThan(x, BigInteger.subtract(n, BigInteger.BigInt(1))); r += 1, x = BigInteger.remainder(BigInteger.multiply(x, x), n)) {
+        if (r === s - 1) {
+          return false;
+        }
+      }
     }
   }
-  return powBig(x, count, 1);
+  return true;
 }
 
-var WHEEL2 = [1, 2, 2, 4];
+function abs(a) {
+  return BigInteger.lessThan(a, BigInteger.BigInt(0)) ? BigInteger.unaryMinus(a) : a;
+}
+
+function gcd(a, b) {
+  while (BigInteger.lessThan(BigInteger.BigInt(0), b)) {
+    var t = BigInteger.remainder(a, b);
+    a = b;
+    b = t;
+  }
+  return a;
+}
+
+// Pollard's rho implementation is stolen from:
+// https://github.com/jiggzson/nerdamer/blob/master/nerdamer.core.js
+// https://en.wikipedia.org/wiki/Pollard%27s_rho_algorithm#C_code_sample
+function primeFactorByPollardRho(n) {
+  if (BigInteger.lessThan(n, BigInteger.BigInt(2))) {
+    throw new RangeError();
+  }
+  if (isPrime(n)) {
+    return n;
+  }
+  var factor = n;
+  for (var x0 = BigInteger.BigInt(2); !BigInteger.lessThan(factor, n); x0 = BigInteger.add(x0, BigInteger.BigInt(1))) {
+    if (BigInteger.lessThan(BigInteger.remainder(n, x0), BigInteger.BigInt(1))) {
+      //?
+      return x0;
+    }
+    var xFixed = x0;
+    var cycleSize = 2;
+    var x = x0;
+    factor = BigInteger.BigInt(1);
+    while (BigInteger.lessThan(factor, BigInteger.BigInt(2))) {
+      var test = BigInteger.BigInt(1);
+      var testStart = x;
+      var found = false;
+      for (var count = 1; count <= cycleSize && BigInteger.lessThan(factor, BigInteger.BigInt(2)); count += 1) {
+        x = BigInteger.remainder(BigInteger.add(BigInteger.multiply(x, x), BigInteger.BigInt(1)), n);
+        //factor = gcd(abs(x - xFixed), n);
+        test = BigInteger.remainder(BigInteger.multiply(test, abs(BigInteger.subtract(x, xFixed))), n);
+        if (found || count === cycleSize || count % 16 === 0) {
+          // https://en.wikipedia.org/wiki/Pollard%27s_rho_algorithm#Variants
+          factor = gcd(test, n);
+          if (!found && !BigInteger.lessThan(factor, BigInteger.BigInt(2))) {
+            cycleSize *= 2;
+            factor = BigInteger.BigInt(1);
+            x = testStart;
+            found = true;
+          }
+          test = BigInteger.BigInt(1);
+          testStart = x;
+        }
+      }
+      cycleSize *= 2;
+      xFixed = x;
+    }
+  }
+  var a = primeFactorByPollardRho(factor);
+  var b = primeFactorByPollardRho(BigInteger.divide(n, factor));
+  return BigInteger.lessThan(a, b) ? a : b;
+}
+
 function primeFactorUsingWheel2(n) {
   var i = 2;
   var s = 0;
@@ -3481,136 +4410,34 @@ function primeFactorUsingWheel2(n) {
     if (n % i === 0) {
       return i;
     }
-    i += WHEEL2[s];
+    i += s === 2 ? 2 : s + 1;
     s += 1;
-    if (s === WHEEL2.length) {
+    if (s === 4) {
       s = 2;
     }
   }
   return n;
 }
 
-function gcd(a, b) {
-  while (BigInteger.compareTo(b, 0) !== 0) {
-    var t = BigInteger.remainder(a, b);
-    a = b;
-    b = t;
-  }
-  return a;
-}
-
-function modPow(a, n, m, accumulator) {
-  accumulator = accumulator == undefined ? 1 : accumulator;
-  return BigInteger.compareTo(n, 0) === 0 ? accumulator : modPow(BigInteger.remainder(BigInteger.multiply(a, a), m), BigInteger.divide(n, 2), m, BigInteger.compareTo(BigInteger.remainder(n, 2), 1) === 0 ? BigInteger.remainder(BigInteger.multiply(accumulator, a), m) : accumulator);
-}
-
-function min(a, b) {
-  return BigInteger.compareTo(a, b) < 0 ? a : b;
-}
-
-function isPrime(n) {
-  // isPrime implementation is from https://github.com/peterolson/BigInteger.js
-  // https://en.wikipedia.org/wiki/Miller%E2%80%93Rabin_primality_test#Deterministic_variants
-  if (BigInteger.compareTo(n, 2) < 0) {
-    throw new RangeError();
-  }
-  if (BigInteger.compareTo(n, 2) === 0) {
-    return true;
-  }
-  if (BigInteger.compareTo(BigInteger.remainder(n, 2), 0) === 0) {
-    return false;
-  }
-  var s = 0;
-  var d = BigInteger.subtract(n, 1);
-  while (BigInteger.compareTo(BigInteger.remainder(d, 2), 0) === 0) {
-    d = BigInteger.divide(d, 2);
-    s += 1;
-  }
-  function test(x0, n, s) {
-    for (var r = 0, x = x0; r <= s - 1; r += 1, x = BigInteger.remainder(BigInteger.multiply(x, x), n)) {
-      if (BigInteger.compareTo(x, BigInteger.subtract(n, 1)) === 0) {
-        return false;
-      }
-    }
-    return true;
-  }
-  for (var a = min(BigInteger.subtract(n, 1), BigInteger.pow(BigInteger.add(ilog2(n), 1), 2)); BigInteger.compareTo(a, 2) >= 0; a = BigInteger.subtract(a, 1)) {
-    var x = modPow(a, d, n);
-    if (BigInteger.compareTo(x, 1) !== 0 && test(x, n, s)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function abs(a) {
-  return BigInteger.compareTo(a, 0) < 0 ? BigInteger.negate(a) : a;
-}
-
-// Pollard's rho stolen from https://github.com/jiggzson/nerdamer/blob/master/nerdamer.core.js
-function ifactor(n) {
-  if (BigInteger.compareTo(n, 2) < 0) {
-    throw new RangeError();
-  }
-  if (isPrime(n)) {
-    return n;
-  }
-  // https://en.wikipedia.org/wiki/Pollard%27s_rho_algorithm#C++_code_sample
-  var factor = n;
-  for (var x0 = 2; BigInteger.compareTo(factor, n) === 0; x0 = BigInteger.add(x0, 1)) {
-    if (BigInteger.compareTo(BigInteger.remainder(n, x0), 0) === 0) {
-      //?
-      return x0;
-    }
-    var xFixed = x0;
-    var cycleSize = 2;
-    var x = x0;
-    factor = 1;
-    while (BigInteger.compareTo(factor, 1) === 0) {
-      var test = 1;
-      var testStart = x;
-      var found = false;
-      for (var count = 1; count <= cycleSize && BigInteger.compareTo(factor, 1) === 0; count += 1) {
-        x = BigInteger.remainder(BigInteger.add(BigInteger.multiply(x, x), 1), n);
-        test = BigInteger.remainder(BigInteger.multiply(test, abs(BigInteger.subtract(x, xFixed))), n);
-        if (found || count === cycleSize || count % 16 === 0) {
-          // https://en.wikipedia.org/wiki/Pollard%27s_rho_algorithm#Variants
-          factor = gcd(test, n);
-          if (!found && BigInteger.compareTo(factor, 1) !== 0) {
-            cycleSize *= 2;
-            factor = 1;
-            x = testStart;
-            found = true;
-          }
-          test = 1;
-          testStart = x;
-        }
-      }
-      cycleSize *= 2;
-      xFixed = x;
-    }
-  }
-  var a = ifactor(factor);
-  var b = ifactor(BigInteger.divide(n, factor));
-  return min(a, b);
-}
-
 function primeFactor(n) {
-  if (BigInteger.compareTo(n, BigInteger.fromNumber(9007199254740991)) <= 0) {
-    return BigInteger.fromNumber(primeFactorUsingWheel2(n));
+  var x = BigInteger.toNumber(n);
+  if (x <= 9007199254740991) {
+    return BigInteger.BigInt(primeFactorUsingWheel2(x));
   }
-  return ifactor(n);
+  var s = BigInteger.toNumber(gcd(n, BigInteger.BigInt(304250263527210))); // a primorial
+  if (s !== 1) {
+    //TODO: use-cases - ?
+    return BigInteger.BigInt(primeFactorUsingWheel2(s));
+  }
+  return primeFactorByPollardRho(n);
 }
 
-BigInteger.nthRoot = nthRoot;
-BigInteger.pow = pow;
-BigInteger.gcd = gcd;
-BigInteger.primeFactor = primeFactor;
+self.primeFactor = primeFactor;
 
-}());
-
+})();
+(function () {
+"use strict";
 /*jslint plusplus: true, vars: true, indent: 2 */
-/*global BigInteger, self, Polynom, console */
 
 // Thanks to Eduardo Cavazos
 // see also https://github.com/dharmatech/Symbolism/blob/master/Symbolism/Symbolism.cs
@@ -3624,10 +4451,13 @@ BigInteger.primeFactor = primeFactor;
 // Expression.prototype.addExpression
 // Expression.prototype.addInteger
 
-(function (global) {
-  "use strict";
-
-  //TODO: rename Symbol
+  
+  
+  
+  
+  
+  
+  
 
   var pow = function (x, count, accumulator) {
     if (count < 0) {
@@ -3638,11 +4468,33 @@ BigInteger.primeFactor = primeFactor;
     }
     return (count < 1 ? accumulator : (2 * Math.floor(count / 2) !== count ? pow(x, count - 1, accumulator.multiply(x)) : pow(x.multiply(x), Math.floor(count / 2), accumulator)));
   };
+  
+  var isDiagonal= function (matrix) {
+    for (var i = 0; i < matrix.rows(); i += 1) {
+      for (var j = 0; j < matrix.cols(); j += 1) {
+        if (i !== j && !matrix.e(i, j).equals(Expression.ZERO)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
 
   var matrixInN = function (matrix, n) {
+    var condition = -1;
+    if (isDiagonal(matrix)) {
+      var result = matrix.map(function (e, i, j) {
+        if (i === j && e.equals(Expression.ZERO)) {
+          condition = 0;
+          return Expression.ZERO;
+        }
+        return i === j ? e.pow(n) : Expression.ZERO;
+      });
+      return {an: result, condition: function (e) { return condition !== -1 ? new ExpressionWithCondition(e, n, condition) : e; }};
+    }
     // https://stackoverflow.com/a/15302448/839199
     var binomialCoefficient = function (n, k) { // binomail coefficient
-      return k === 0 ? Expression.ONE : n.multiply(binomialCoefficient(n.subtract(Expression.ONE), k - 1)).divide(new Integer(k));
+      return k === 0 ? Expression.ONE : n.multiply(binomialCoefficient(n.subtract(Expression.ONE), k - 1)).divide(Integer.fromNumber(k));
     };
     //Note: experimental
     // {{1,0,0},{0,1,1},{0,0,1}}^n === {{1,0,0},{0,1,n},{0,0,1}}
@@ -3657,29 +4509,37 @@ BigInteger.primeFactor = primeFactor;
       return Expression.ZERO;
     });
     var an = undefined;
+    var iteration = -1;
     while (!anm1.eql(anm1previous)) {
+      iteration += 1;
       anm1previous = anm1;
       // A^(n) = A^(n-1) * A;
       an = anm1.multiply(a);
       anm1 = an.map(function (e, i, j) {
+        var isSymbol = anm1.e(i, j) instanceof Expression.Symbol && anm1.e(i, j).symbol.slice(0, symbolName.length) === symbolName;
+        if (!isSymbol) {
+          return anm1.e(i, j);//?
+        }
+
         // an: {{1,0,0},{0,1,1+aa_23},{0,0,1}}
         // a_n = n + a_(n-1)
         // a_n = k * a_(n-1) + k**(n-(m+1)) * choose(n-1, m)
         // =>
-        // a_n = k**(n-(m+1)) * choose(n-1, m)
+        // a_n = k**(n-(m+1)) * choose(n, m+1)
+        // choose(n-1, m+1) + choose(n-1, m) = choose(n, m+1)
         if (!(e instanceof Integer)) {
-          var m = Polynom.toPolynomial(e.getNumerator(), n).getDegree();
+          var m = Polynomial.toPolynomial(e.getNumerator(), n).getDegree();
           var previous = anm1.e(i, j);
-          var p = Polynom.toPolynomial(e.getNumerator(), previous);
+          var p = Polynomial.toPolynomial(e.getNumerator(), previous);
           var k = p.getLeadingCoefficient().divide(e.getDenominator());
           //TODO: remove `k instanceof Integer`
           if (p.getDegree() === 1 &&
               a.e(i, j).equals(Expression.ZERO) && //TODO: remove
-              k instanceof Integer &&
-              e.equals(k.multiply(previous).add(k.pow(n).divide(k.pow(new Integer(m + 1))).multiply(binomialCoefficient(n.subtract(Expression.ONE), m))))) {
+              (k instanceof Integer || k instanceof Expression.Complex) &&
+              e.equals(k.multiply(previous).add(k.pow(n).divide(k.pow(Integer.fromNumber(m + 1))).multiply(binomialCoefficient(n.subtract(Expression.ONE), m))))) {
             console.log("!", e.toString());
             // a.e(i, j).add()
-            return k.pow(n).divide(k.pow(new Integer(m + 2))).multiply(binomialCoefficient(n.subtract(Expression.ONE), m + 1));
+            return k.pow(n).divide(k.pow(Integer.fromNumber(m + 2))).multiply(binomialCoefficient(n.subtract(Expression.ONE), m + 1));
           }
         }
         // a_n = a_(n-1)
@@ -3687,27 +4547,55 @@ BigInteger.primeFactor = primeFactor;
           return a.e(i, j);
         }
         // a_n = k * a_(n-1) => a_n = k**(n - 1) * a_1
-        if (anm1.e(i, j) instanceof Expression.Symbol && !e.equals(Expression.ZERO) && 
-            e.divide(anm1.e(i, j)) instanceof Expression.Integer || (e.divide(anm1.e(i, j)).getNumerator() instanceof Expression.Integer && e.getDenominator() instanceof Expression.Integer)) {
-          return e.divide(anm1.e(i, j)).pow(n.subtract(Expression.TWO)).multiply(a.e(i, j));
+        if (anm1.e(i, j) instanceof Expression.Symbol && anm1.e(i, j).symbol === symbolName + "_(" + i + "," + j + ")" && !e.equals(Expression.ZERO)) {
+          var k = e.divide(anm1.e(i, j));
+          if (k instanceof Integer ||
+              k instanceof Expression.Complex ||
+              (k.getNumerator() instanceof Integer && e.getDenominator() instanceof Integer) ||
+              (k.getNumerator() instanceof NthRoot && k.getDenominator() instanceof Integer)) {
+            return k.pow(n.subtract(Expression.TWO)).multiply(a.e(i, j));
+          }
+        }
+        if (anm1.e(i, j) instanceof Expression.Symbol && anm1.e(i, j).symbol === symbolName + "_(" + i + "," + j + ")" && e.equals(Expression.ZERO)) {
+          condition = iteration;
+          return Expression.ZERO;
         }
         // a_n = a_(n-1) + b => a_n = a_1 + b*(n-1)
         var sub = e.subtract(anm1.e(i, j));
-        if (sub instanceof Expression.Integer) {
+        if (sub instanceof Integer) {
           return a.e(i, j).add(sub.multiply(n.subtract(Expression.TWO)));
         }
+        var dpnm1pda = function (k) {
+          var previous = anm1.e(i, j);
+          return k.multiply(previous).add(k.pow(n.subtract(Expression.ONE)));
+        };
         // a_n = d**(n-1) + d * a_(n-1)
-        if (e instanceof Expression.Division && e.getDenominator() instanceof Expression.Integer) {
+        if (e instanceof Expression.Division && e.getDenominator() instanceof Integer) {
           var d = e.getDenominator();
-          if (e.equals(d.pow(n.subtract(Expression.ONE)).add(d.multiply(anm1.e(i, j))))) {
+          if (e.equals(dpnm1pda(d))) {
+            return d.pow(n.subtract(Expression.TWO)).multiply(n.subtract(Expression.TWO).add(a.e(i, j)));
+          }
+          var d = e.getDenominator().negate();
+          if (e.equals(dpnm1pda(d))) {
             return d.pow(n.subtract(Expression.TWO)).multiply(n.subtract(Expression.TWO).add(a.e(i, j)));
           }
         }
         // a_n = (-1)**(n-1) - a_(n-1)
         var d = Expression.ONE.negate();
-        if (e.equals(d.pow(n.subtract(Expression.ONE)).add(d.multiply(anm1.e(i, j))))) {
+        if (e.equals(dpnm1pda(d))) {
           return d.pow(n.subtract(Expression.TWO)).multiply(n.subtract(Expression.TWO).add(a.e(i, j)));
         }
+        
+        //?
+        var d = Expression.I;
+        if (e.equals(dpnm1pda(d))) {
+          return d.pow(n.subtract(Expression.TWO)).multiply(n.subtract(Expression.TWO).add(a.e(i, j)));
+        }
+        var d = Expression.I.negate();
+        if (e.equals(dpnm1pda(d))) {
+          return d.pow(n.subtract(Expression.TWO)).multiply(n.subtract(Expression.TWO).add(a.e(i, j)));
+        }
+        
         
         return anm1.e(i, j);
       });
@@ -3716,49 +4604,69 @@ BigInteger.primeFactor = primeFactor;
     for (var i = 0; i < anm1.rows(); i += 1) {
       for (var j = 0; j < anm1.cols(); j += 1) {
         var e = anm1.e(i, j);
-        if (e instanceof Symbol && e.symbol.slice(0, symbolName.length) === symbolName) {
+        if (e instanceof Expression.Symbol && e.symbol.slice(0, symbolName.length) === symbolName) {
           ok2 = false;
         }
       }
     }
-    return !ok2 ? undefined : an;
+    if (condition > 0) {
+      return undefined;
+    }
+    return !ok2 ? undefined : {an: an, condition: function (e) { return condition !== -1 ? new ExpressionWithCondition(e, n, condition) : e; }};
   };
 
   var enableEX = true;
   var enable2X = true;
+  var enableEC = true;
 
   Expression.prototype.powExpression = function (x) {
     var y = this;
 
-    if (x instanceof Matrix && y instanceof Symbol && (y.symbol === "t" || y.symbol === "T")) {
+    if (x instanceof Expression.Matrix && y instanceof Expression.Symbol && (y.symbol === "t" || y.symbol === "T")) {
       return x.transpose();
     }
 
     //!
-    if (y instanceof Division && y.a instanceof Integer && y.b instanceof Integer) {
-      if (global.hit != undefined) {
-        global.hit({powExpression: y.toString()});
+    if (y instanceof Division && y.a instanceof Integer && y.b instanceof Integer && x !== Expression.E && !(x instanceof Expression.Symbol) && !Expression.has(x, Expression.Symbol)) {
+      if (typeof hit === "function") {
+        hit({powExpression: y.toString()});
       }
-      var n = Number.parseInt(y.b.toString(), 10);
+      var n = y.b.toNumber();
       //if (n >= 2 && n <= 9007199254740991) {//TODO:
         var q = y.a.truncatingDivide(y.b);
         var r = y.a.subtract(q.multiply(y.b));
+        if (q.equals(Expression.ZERO)) {// to avoid multiplication event
+          return x.pow(r)._nthRoot(n);
+        }
         return x.pow(q).multiply(x.pow(r)._nthRoot(n));
       //}
     }
     //!
 
+    if (x instanceof Expression.Integer && y === Expression.CIRCLE) {
+      return new Expression.Degrees(x);
+    }
+
     //!new 2017-05-08
     if (enableEX) {
-      if (x === Expression.E || (enable2X && x instanceof Integer && x.compareTo(Expression.ONE) > 0 && primeFactor(x).compareTo(x) === 0)) {
+      if (x === Expression.E || (enable2X && x instanceof Integer && x.compareTo(Expression.ONE) > 0 && integerPrimeFactor(x).compareTo(x) === 0)) {
         var isValid = function (y) {
+          if (y instanceof Expression.Symbol) {
+            return true;
+          }
           if (y instanceof Addition) {
             return isValid(y.a) && isValid(y.b);
           }
           if (y instanceof Integer && x === Expression.E) {
             return true;
           }
-          return (y instanceof Symbol || y instanceof Multiplication && y.a instanceof Integer && y.b instanceof Symbol);
+          if (y instanceof Multiplication && y.a instanceof Integer && y.b instanceof Expression.Symbol) {
+            return true;
+          }
+          if ((x === Expression.E || x instanceof Integer && x.compareTo(Expression.ONE) > 0) && y instanceof Division && y.b instanceof Integer) {//!new 2019-08-08
+            return isValid(y.a);//?
+          }
+          return false;
         };
         if (isValid(y)) {
           if (y.isNegative()) {
@@ -3771,7 +4679,15 @@ BigInteger.primeFactor = primeFactor;
         if (y instanceof Addition && (y.a instanceof Integer || y.b instanceof Integer)) {
           return x.pow(y.a).multiply(x.pow(y.b));
         }
-        var xf = primeFactor(x);
+        var xf = integerPrimeFactor(x);
+        if (xf.equals(x)) {
+          if (y instanceof Division && y.b instanceof Integer) {
+            var n = y.b.toNumber();
+            if (n >= 2 && n <= 9007199254740991) {
+              return x.pow(y.a)._nthRoot(n);
+            }
+          }
+        }
         return xf.pow(y).multiply(x.divide(xf).pow(y));
       }
     }
@@ -3793,16 +4709,19 @@ BigInteger.primeFactor = primeFactor;
     }
 
     var yn = y.getNumerator();
-    if (x === Expression.E && yn instanceof Multiplication && yn.a instanceof Expression.Complex && yn.a.real.equals(Expression.ZERO) && yn.b instanceof Symbol) {
+    if (x === Expression.E && yn instanceof Multiplication && yn.a instanceof Expression.Complex && yn.a.real.equals(Expression.ZERO) && yn.b instanceof Expression.Symbol) {
       var t = y.multiply(Expression.I.negate());
       return t.cos().add(Expression.I.multiply(t.sin()));
     }
 
     //TODO: 
-    if (x instanceof Expression.Matrix && x.matrix.isSquare() && y instanceof Symbol && y.symbol === "n") {
+    if (x instanceof Expression.Matrix && y instanceof Expression.Symbol && (y.symbol === "n" || y.symbol === "k")) {
+      if (!x.matrix.isSquare()) {
+        throw new RangeError("NonSquareMatrixException");
+      }
       var tmp = matrixInN(x.matrix, y);
       if (tmp != undefined) {
-        return new Expression.Matrix(tmp);
+        return tmp.condition(new Expression.Matrix(tmp.an));
       }
 
       //! 2018-08-26
@@ -3825,7 +4744,7 @@ BigInteger.primeFactor = primeFactor;
                 //TODO more details (A=P*D*P^-1 => A^n=P*D*P^-1 * ... * P*D*P^-1=P*D^n*P^1
                 Expression.callback(new Expression.Event("diagonalize", x));
               }
-              return new Expression.Matrix(tmp.T.multiply(SL).multiply(tmp.T_INVERSED));
+              return SL.condition(new Expression.Matrix(tmp.T.multiply(SL.an).multiply(tmp.T_INVERSED)));
             }
           } else {
             var tmp = Expression.getFormaDeJordan(x.matrix, eigenvalues, multiplicities);
@@ -3839,7 +4758,7 @@ BigInteger.primeFactor = primeFactor;
                 Expression.callback(new Expression.Event("Jordan-decomposition", x));
               }
               //TODO: details !!!
-              return new Expression.Matrix(tmp.P.multiply(JN).multiply(tmp.P_INVERSED));
+              return JN.condition(new Expression.Matrix(tmp.P.multiply(JN.an).multiply(tmp.P_INVERSED)));
             }
           }
         }
@@ -3848,38 +4767,136 @@ BigInteger.primeFactor = primeFactor;
     }
     
     if (Expression.ExponentiationOfMinusOne != null) {
-      if (x instanceof Integer && x.compareTo(Expression.ZERO) < 0 && y instanceof Symbol && y.symbol === "n") {
-        return new Expression.ExponentiationOfMinusOne(Expression.ONE.negate(), y).multiply(x.negate().pow(y));
-      }
-      if (x instanceof Integer && x.compareTo(Expression.ZERO) < 0 && y instanceof Addition && y.a instanceof Symbol && y.a.symbol === "n" && y.b instanceof Integer) {
-        return new Expression.ExponentiationOfMinusOne(Expression.ONE.negate(), y.a).multiply(Expression.ONE.negate().pow(y.b)).multiply(x.negate().pow(y));
+      if (x instanceof Integer && x.compareTo(Expression.ZERO) < 0) {
+        if (y instanceof Expression.Symbol && (y.symbol === "n" || y.symbol === "k")) {
+          return new Expression.ExponentiationOfMinusOne(Expression.ONE.negate(), y).multiply(x.negate().pow(y));
+        }
+        if (y instanceof Addition && y.a instanceof Expression.Symbol && (y.a.symbol === "n" || y.a.symbol === "k") && y.b instanceof Integer) {
+          return new Expression.ExponentiationOfMinusOne(Expression.ONE.negate(), y.a).multiply(Expression.ONE.negate().pow(y.b)).multiply(x.negate().pow(y));
+        }
+        if (y instanceof Multiplication) {
+          return x.pow(y.a).pow(y.b);
+        }
+        if (y instanceof Addition && y.b instanceof Integer) {
+          return x.pow(y.a).multiply(x.pow(y.b));
+        }
       }
     }
+
+    if (Expression.ExponentiationOfImaginaryUnit != null) {
+      if (x instanceof Expression.Complex && x.equals(Expression.I.negate())) {
+        return Expression.ONE.negate().pow(y).multiply(x.negate().pow(y));
+      }
+      if (x instanceof Expression.Complex && x.equals(Expression.I)) {//TODO: -i, other complex numbers - ?
+        if (y instanceof Expression.Symbol && (y.symbol === "n" || y.symbol === "k")) {
+         return new Expression.ExponentiationOfImaginaryUnit(Expression.I, y);
+        }
+        if (y instanceof Addition && y.a instanceof Expression.Symbol && (y.a.symbol === "n" || y.a.symbol === "k") && y.b instanceof Integer) {
+          var t = Expression.I.pow(y.b);
+          return new Expression.ExponentiationOfImaginaryUnit(Expression.I, t instanceof Expression.Complex ? y.a.add(Expression.ONE) : y.a).multiply(t instanceof Expression.Complex ? t.divide(Expression.I) : t);
+        }
+        if (y instanceof Multiplication) {
+          return x.pow(y.a).pow(y.b);
+        }
+        if (y instanceof Addition && y.b instanceof Integer) {
+          return x.pow(y.a).multiply(x.pow(y.b));
+        }
+      }
+    }
+
+    if (x === Expression.E && y instanceof Expression.Matrix) {
+      if (!y.matrix.isSquare()) {
+        throw new RangeError("NonSquareMatrixException");
+      }
+      // https://en.wikipedia.org/wiki/Matrix_exponential#Using_the_Jordan_canonical_form
+      var tmp = Expression.getEigenvalues(y.matrix);
+      var eigenvalues = tmp.eigenvalues;
+      var multiplicities = tmp.multiplicities;
+      if (Expression.sum(multiplicities) === y.matrix.cols()) {
+        var tmp = Expression.getFormaDeJordan(y.matrix, eigenvalues, multiplicities);
+        // exp(A) = exp(P*J*P^-1) = P*exp(D + N)*P^-1 = P*exp(D)*exp(N)*P^-1
+        var D = tmp.J.map(function (e, i, j) {
+          return i === j ? e : Expression.ZERO;
+        });
+        var N = tmp.J.map(function (e, i, j) {
+          return i !== j ? e : Expression.ZERO;
+        });
+        var exp = function (N) {
+          // https://en.wikipedia.org/wiki/Matrix_exponential#Nilpotent_case
+          var z = Matrix.Zero(N.cols(), N.cols());
+          var s = z;
+          var p = Matrix.I(N.cols());
+          var k = 0;
+          var f = 1;
+          while (!p.eql(z)) {
+            var summand = p.scale(Expression.ONE.divide(Integer.fromNumber(f)));
+            s = s.add(summand);
+            p = p.multiply(N);
+            k += 1;
+            f *= k;
+          }
+          return s;
+        };
+        if (Expression.callback != undefined) {
+          Expression.callback(new Expression.Event("exponential-using-Jordan-canonical-form", y));
+        }
+        //if (Expression.callback != undefined) {
+        //  Expression.callback(new Expression.Event("Jordan-decomposition", y));
+        //}
+        return new Expression.Matrix(tmp.P.multiply(D.map(function (e, i, j) {
+          return i === j ? Expression.E.pow(e) : Expression.ZERO;
+        }).multiply(exp(N))).multiply(tmp.P_INVERSED));
+      }
+    }
+
+    //!2019-04-22
+    if (x instanceof NthRoot && x.a instanceof Integer) {
+      if (x.n === 2) {//TODO:
+        return x.a.pow(y.divide(Expression.TWO));
+      }
+    }
+
+    if (enableEC) {
+      if (x === Expression.E && isConstant(y) && !has(y, Expression.Complex)) {
+        return new Expression.Exponentiation(x, y);
+      }
+      if ((x instanceof Expression.Symbol || Expression.has(x, Expression.Symbol)) && y instanceof Expression.Division && y.getDenominator() instanceof Integer) {
+        return x.pow(y.getNumerator())._nthRoot(y.getDenominator().toNumber());
+      }
+      if (x === Expression.E && y instanceof Expression.Addition) {
+        return x.pow(y.a).multiply(x.pow(y.b));
+      }
+      if (x instanceof Exponentiation && getBase(x) === Expression.E) {//?
+        return getBase(x).pow(getExponent(x).multiply(y));
+      }
+    }
+
     throw new RangeError("NotSupportedError");
   };
 
+  // compare two expression, which are factors (multiplicaiton operands) of terms (addition operands)
   Expression.prototype.compare4Addition = function (y) {
     var x = this;
-    if (x instanceof Symbol && y instanceof Integer) {
+    if (x instanceof Expression.Symbol && y instanceof Integer) {
       return +1;
     }
-    if (x instanceof Integer && y instanceof Symbol) {
+    if (x instanceof Integer && y instanceof Expression.Symbol) {
       return -1;
     }
     if (x instanceof Integer && y instanceof Integer) {
       return x.compareTo(y);
     }
-    if (x instanceof Symbol && y instanceof Symbol) {
+    if (x instanceof Expression.Symbol && y instanceof Expression.Symbol) {
       return x.symbol < y.symbol ? -1 : (y.symbol < x.symbol ? +1 : 0);
     }
     //!
-    if (x instanceof Matrix && y instanceof MatrixSymbol) {
+    if (x instanceof Expression.Matrix && y instanceof MatrixSymbol) {
       return +1;
     }
-    if (x instanceof MatrixSymbol && y instanceof Matrix) {
+    if (x instanceof MatrixSymbol && y instanceof Expression.Matrix) {
       return -1;
     }
-    if (x instanceof Matrix && y instanceof Matrix) {
+    if (x instanceof Expression.Matrix && y instanceof Expression.Matrix) {
       if (x.matrix.rows() === y.matrix.rows() &&
           x.matrix.cols() === y.matrix.cols()) {
         var rows = x.matrix.rows();
@@ -3907,7 +4924,7 @@ BigInteger.primeFactor = primeFactor;
     }
     
     //!new 2017-02-10
-    if (x instanceof Matrix || y instanceof Symbol) {
+    if (x instanceof Expression.Matrix || y instanceof Expression.Symbol) {
       return -1;
     }
 
@@ -3927,6 +4944,19 @@ BigInteger.primeFactor = primeFactor;
       return -1;//?
     }
 
+    //!2019-02-18
+    if (x instanceof Integer && y instanceof Expression.Complex) {
+      return -1;//?
+    }
+    if (x instanceof Expression.Complex && y instanceof Integer) {
+      return +1;//?
+    }
+    //!
+
+    if (x.equals(y)) {
+      return 0;//!
+    }
+    
     //!
     throw new RangeError();
   };
@@ -3941,30 +4971,39 @@ BigInteger.primeFactor = primeFactor;
   };
 
   var getBase = function (x) {
+    //TODO: ?
+    //if (x instanceof NthRoot) {
+    //  return x.a;
+    //}
     return x instanceof Exponentiation ? x.a : x;
   };
   var getExponent = function (x) {
+    //TODO: ?
+    //if (x instanceof NthRoot) {
+    //  return Expression.Integer.fromNumber(x.n);
+    //}
     return x instanceof Exponentiation ? x.b : Expression.ONE;
   };
 
-  var getConstant = function (x) {
-    if (x instanceof Integer) {
-      return x;
-    } else if (x instanceof Expression.Complex) {
-      return x;
-    } else if (x instanceof Multiplication) {
+  var getConstant = function (e) {
+    if (e instanceof Integer) {
+      return e;
+    } else if (e instanceof Expression.Complex) {
+      return e;
+    } else if (e instanceof Multiplication) {
       var c = undefined;
-      for (var multiplications = x.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-        var t = getConstant(multiplications.value());
+      var x = e;
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+        var t = getConstant(y);
         c = c == undefined ? t : t.multiply(c);
       }
       if (c != undefined) {
         return c;
       }
-    } else if (x instanceof Addition) { // -5*x+15
+    } else if (e instanceof Addition) { // -5*x+15
       var c = undefined;
-      for (var additions = x.summands(); additions != undefined; additions = additions.next()) {
-        var t = getConstant(additions.value());
+      for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
+        var t = getConstant(x);
         //c = c == undefined ? t : integerGCD(t, c);
         c = c == undefined ? t : complexGCD(t, c);
       }
@@ -3982,8 +5021,8 @@ BigInteger.primeFactor = primeFactor;
       return undefined;
     } else if (x instanceof Multiplication) {
       var terms = [];
-      for (var multiplications = x.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-        var t = getTerm(multiplications.value());
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+        var t = getTerm(y);
         if (t != undefined) {
           terms.push(t);
         }
@@ -4032,13 +5071,13 @@ BigInteger.primeFactor = primeFactor;
     // rest
 
     var c = 0;
-    if (x instanceof Integer && y instanceof Symbol) {
+    if (x instanceof Integer && y instanceof Expression.Symbol) {
       return multiplyByInteger(x, y);
     }
-    if (x instanceof Symbol && y instanceof Integer) {
+    if (x instanceof Expression.Symbol && y instanceof Integer) {
       return multiplyByInteger(y, x);
     }
-    if (x instanceof Symbol && y instanceof Symbol) {
+    if (x instanceof Expression.Symbol && y instanceof Expression.Symbol) {
       c = compare4Multiplication(x, y);
       if (c === 0) {
         return x.pow(Expression.TWO);
@@ -4051,14 +5090,14 @@ BigInteger.primeFactor = primeFactor;
     if (x instanceof Exponentiation && y instanceof Integer) {
       return multiplyByInteger(y, x);
     }
-    if (x instanceof Exponentiation && y instanceof Symbol) {
+    if (x instanceof Exponentiation && y instanceof Expression.Symbol) {
       c = compare4Multiplication(getBase(x), y);
       if (c === 0) {
         return y.pow(getExponent(x).add(Expression.ONE));
       }
       return c > 0 ? new Multiplication(y, x) : new Multiplication(x, y);
     }
-    if (x instanceof Symbol && y instanceof Exponentiation) {
+    if (x instanceof Expression.Symbol && y instanceof Exponentiation) {
       c = compare4Multiplication(x, getBase(y));
       if (c === 0) {
         return x.pow(getExponent(y).add(Expression.ONE));
@@ -4074,29 +5113,36 @@ BigInteger.primeFactor = primeFactor;
     }
 
     if (x instanceof SquareRoot && y instanceof SquareRoot) {
+      if (x.a instanceof Integer && y.a instanceof Exponentiation) {//TODO: fix
+        return new Multiplication(x, y);
+      }
       return x.a.multiply(y.a).squareRoot();
     }
     if (x instanceof CubeRoot && y instanceof CubeRoot) {
       return x.a.multiply(y.a).cubeRoot();
     }
     if (x instanceof NthRoot && y instanceof NthRoot) {
-      if (x.n === y.n) {
-        return x.a.multiply(y.a)._nthRoot(x.n);
+      //if (x.n === y.n) {
+      //  return x.a.multiply(y.a)._nthRoot(x.n);
+      //}
+      var ng = ngcd(x.n, y.n);
+      if (!(x.a instanceof Integer) || !x.a.gcd(y.a).equals(Expression.ONE)) {
+        return Expression.pow(x.a, y.n / ng).multiply(Expression.pow(y.a, x.n / ng))._nthRoot(x.n / ng * y.n);
       }
-      return x.n < y.n ? new Multiplication(x, y) : new Multiplication(y, x);
+      return x.n < y.n ? new Multiplication(x, y) : (x.n > y.n ? new Multiplication(y, x) : x.a.multiply(y.a)._nthRoot(x.n));
     }
 
     //!
-    if (x instanceof MatrixSymbol && y instanceof Matrix) {
+    if (x instanceof MatrixSymbol && y instanceof Expression.Matrix) {
       return new Multiplication(x, y);
     }
-    if (x instanceof Matrix && y instanceof MatrixSymbol) {
+    if (x instanceof Expression.Matrix && y instanceof MatrixSymbol) {
       return new Multiplication(x, y);
     }
-    if (has(x, MatrixSymbol) && y instanceof Matrix) { // X^2*{{1,2},{3,4}}
+    if (has(x, MatrixSymbol) && y instanceof Expression.Matrix) { // X^2*{{1,2},{3,4}}
       return new Multiplication(x, y);
     }
-    if (x instanceof Matrix && has(y, MatrixSymbol)) { // {{1,2},{3,4}}*X^2
+    if (x instanceof Expression.Matrix && has(y, MatrixSymbol)) { // {{1,2},{3,4}}*X^2
       return new Multiplication(x, y);
     }
     
@@ -4118,6 +5164,22 @@ BigInteger.primeFactor = primeFactor;
         return x;
       }
     }
+
+    if (x instanceof Expression.Complex && y instanceof Expression.ExponentiationOfImaginaryUnit) {
+      //!hack
+      //TODO: remove
+      if (x.real.equals(Expression.ZERO) && x !== Expression.I) {
+        return x.imaginary.multiply(y.multiply(Expression.I));
+      }
+    }
+    if (x instanceof Expression.ExponentiationOfImaginaryUnit && y instanceof Expression.Complex) {
+      //!hack
+      //TODO: remove
+      if (y.real.equals(Expression.ZERO) && y !== Expression.I) {
+        return y.imaginary.multiply(x.multiply(Expression.I));
+      }
+    }
+
     var cmp = compare4Multiplication(getBase(x), getBase(y));
     if (cmp === 0) {
       return getBase(x).pow(getExponent(x).add(getExponent(y)));
@@ -4131,24 +5193,31 @@ BigInteger.primeFactor = primeFactor;
 
   };
 
+  function Iterator() {
+  }
+  if (typeof Symbol === "function") {
+    Iterator.prototype[Symbol.iterator] = function () {
+      return this;
+    };
+    Object.defineProperty(Iterator.prototype, "done", {
+      get: function () {
+        return this.value == null;
+      }
+    });
+  }
+
   function TermFactorsIterator(e) {
+    this.value = undefined;
     this.e = e;
   }
-  TermFactorsIterator.prototype.value = function () {
-    return this.e instanceof Multiplication ? this.e.b : this.e;
-  };
+  TermFactorsIterator.prototype = Object.create(Iterator.prototype);
   TermFactorsIterator.prototype.next = function () {
-    var t = this.e;
-    do {
-      t = t instanceof Multiplication ? t.a : undefined;
-    } while (t instanceof Integer || t instanceof Expression.Complex);
-    return t != undefined ? new TermFactorsIterator(t) : undefined;
+    this.value = this.e instanceof Multiplication ? this.e.b : (this.e instanceof Integer || this.e instanceof Expression.Complex ? null : this.e);
+    this.e = this.e instanceof Multiplication ? this.e.a : undefined;
+    return this;
   };
 
   function termFactors(e) {
-    if (e instanceof Integer || e instanceof Expression.Complex) {
-      return undefined;
-    }
     return new TermFactorsIterator(e);
   }
 
@@ -4156,23 +5225,23 @@ BigInteger.primeFactor = primeFactor;
     // undefined | Symbol | Exponentiation | Multiplication
     var i = termFactors(x);
     var j = termFactors(y);
-    while (i != undefined && j != undefined) {
-      var fx = i.value();
-      i = i.next();
-      var fy = j.value();
-      j = j.next();
+    var a = i.next().value;
+    var b = j.next().value;
+    while (a != null && b != null) {
 
       //!
       // x^3*y^2, x^2*y^3
-      var cmp = 0 - compare(getBase(fx), getBase(fy));
+      var cmp = 0 - compare(getBase(a), getBase(b));
       if (cmp === 0) {
-        cmp = compare(getExponent(fx), getExponent(fy));
+        cmp = compare(getExponent(a), getExponent(b));
       }
       if (cmp !== 0) {
         return cmp;
       }
+      a = i.next().value;
+      b = j.next().value;
     }
-    return i != undefined ? +1 : (j != undefined ? -1 : 0);
+    return a != null ? +1 : (b != null ? -1 : 0);
   };
 
   Expression.prototype.addExpression = function (x) {
@@ -4184,22 +5253,60 @@ BigInteger.primeFactor = primeFactor;
       return x;
     }
 
+    //!2019-02-16
+    if (x instanceof Multiplication && x.b instanceof IdentityMatrix) {
+      var t = getIdentityMatrixCoefficient(y);
+      if (t != null) {
+        return x.a.add(t).multiply(x.b);
+      }
+    } else if (x instanceof IdentityMatrix) {
+      var t = getIdentityMatrixCoefficient(y);
+      if (t != null) {
+        return Expression.ONE.add(t).multiply(x);
+      }
+    }
+    if (y instanceof Multiplication && y.b instanceof IdentityMatrix) {
+      var t = getIdentityMatrixCoefficient(x);
+      if (t != null) {
+        return t.add(y.a).multiply(y.b);
+      }
+    } else if (y instanceof IdentityMatrix) {
+      var t = getIdentityMatrixCoefficient(x);
+      if (t != null) {
+        return t.add(Expression.ONE).multiply(y);
+      }
+    }
+    //!2019-02-16
+
+    //!new 2019-09-30
+    if (x instanceof Expression.Addition && y instanceof Expression.Matrix) {//TODO: 
+      return x.a.add(x.b.add(y));
+    }
+    if (x instanceof Expression.Matrix && y instanceof Expression.Addition) {
+      return x.add(y.a).add(y.b);
+    }
+    if (x instanceof Expression.Addition && y instanceof Expression.Addition) {
+      if (x.b instanceof Expression.Matrix && y.b instanceof Expression.Matrix) {
+        return x.a.add(x.b.add(y));
+      }
+    }
+
     // rest
 
     var i = x.summands();
     var j = y.summands();
+    var a = i.next().value;
+    var b = j.next().value;
     var s = [];
     //a + b, compare4Addition("a", "b") > 0
-    while (i != null && j != null) {
-      var a = i.value();
-      var b = j.value();
+    while (a != null && b != null) {
       var c = compare4Addition(a, b);
       if (c < 0) {
         s.push(a);
-        i = i.next();
+        a = i.next().value;
       } else if (c > 0) {
         s.push(b);
-        j = j.next();
+        b = j.next().value;
       } else {
         var constant = getConstant(a).add(getConstant(b));
         var term = getTerm(a);
@@ -4207,17 +5314,17 @@ BigInteger.primeFactor = primeFactor;
         if (!last.equals(Expression.ZERO)) {
           s.push(last);
         }
-        i = i.next();
-        j = j.next();
+        a = i.next().value;
+        b = j.next().value;
       }
     }
-    while (i != null) {
-      s.push(i.value());
-      i = i.next();
+    while (a != null) {
+      s.push(a);
+      a = i.next().value;
     }
-    while (j != null) {
-      s.push(j.value());
-      j = j.next();
+    while (b != null) {
+      s.push(b);
+      b = j.next().value;
     }
     if (s.length === 0) {
       return Expression.ZERO;
@@ -4230,29 +5337,17 @@ BigInteger.primeFactor = primeFactor;
     return accumulator;
   };
 
-  var pseudoRemainder = function (x, y) {
-    var lcg = y.getLeadingCoefficient();
-    var n = x.getDegree() - y.getDegree();
-    // assertion
-    if (n < 0) {
-      throw new RangeError();
-    }
-    var sx = x.multiply(Polynom.of(lcg.pow(Integer.parseInteger(n.toString()).add(Expression.ONE))));
-    return sx.divideAndRemainder(y, "throw").remainder;
-  };
-
-  var divideByInteger = function (x, f) {
+  var divideByInteger = function (e, f) {
     if (f.equals(Expression.ZERO)) {
       throw new RangeError("ArithmeticException");
     }
     var result = Expression.ZERO;
-    for (var additions = x.summands(); additions != undefined; additions = additions.next()) {
-      var fx = additions.value();
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
       var rest = Expression.ONE;
       var t = undefined;
       // TODO: check, fix?
-      for (var multiplications = fx.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-        var z = multiplications.value();
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+        var z = y;
         if (z instanceof Integer || z instanceof Expression.Complex) {
           if (t != undefined) {
             console.warn("!");
@@ -4279,16 +5374,14 @@ BigInteger.primeFactor = primeFactor;
     return result;
   };
 
-  Expression.getCoefficients = function (x, v) {
+  Expression.getCoefficients = function (e, v) {
     var result = [];
-    for (var additions = x.summands(); additions != undefined; additions = additions.next()) {
-      var fx = additions.value();
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
       var d = Expression.ZERO;
       var c = Expression.ONE;
-      for (var multiplications = fx.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-        var t = multiplications.value();
-        for (var variables = getVariableInternal(t); variables != undefined; variables = variables.next()) {
-          var ve = variables.value();
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+        var t = y;
+        for (var variables = getVariableInternal(t), ve = variables.next().value; ve != null; ve = variables.next().value) {
           if (ve.v.equals(v)) {
             d = d.add(ve.e);
           } else {
@@ -4338,45 +5431,64 @@ BigInteger.primeFactor = primeFactor;
 
   function VIterator(v) {
     if (v == undefined) {
-      throw new Error();
+      throw new TypeError();
     }
+    this.value = undefined;
     this.v = v;
   }
+  VIterator.prototype = Object.create(Iterator.prototype);
   VIterator.prototype.next = function () {
-    return undefined;
-  };
-  VIterator.prototype.value = function () {
-    return this.v;
+    this.value = this.v;
+    this.v = undefined;
+    return this;
   };
 
   function VariablesIterator(v, additions) {
     if (additions == undefined) {
-      throw new Error();
+      throw new TypeError();
     }
+    this.value = undefined;
     this.v = v;
     this.additions = additions;
   }
+  VariablesIterator.prototype = Object.create(Iterator.prototype);
   VariablesIterator.prototype.next = function () {
-    var a = this.additions.next();
-    return a == undefined ? undefined : new VariablesIterator(this.v, a);
-  };
-  VariablesIterator.prototype.value = function () {
-    var x = this.additions.value();
-    if (x == undefined) {
-      throw new Error();//TODO: remove
-    }
-    if (x instanceof Symbol) {
-      return {v: new Exponentiation(this.v, x), e: Expression.ONE};
-    } else if (x instanceof Multiplication && x.a instanceof Integer && x.b instanceof Symbol) {
-      return {v: new Exponentiation(this.v, x.b), e: x.a};
+    var x = this.additions.next().value;
+    var value = null;
+    if (x == null) {
+      value = null;
+    } else if (x instanceof Expression.Symbol) {
+      value = {v: new Exponentiation(this.v, x), e: Expression.ONE};
+    } else if (x instanceof Multiplication && x.a instanceof Integer && x.b instanceof Expression.Symbol) {
+      value = {v: new Exponentiation(this.v, x.b), e: x.a};
     } else if (x instanceof Integer) {
-      return {v: this.v, e: x};
+      value = {v: this.v, e: x};
+    } else if (x instanceof Expression.Division && x.a instanceof Integer && x.b instanceof Integer) {//!new 2019-06-16
+      value = {v: this.v, e: x};
+    } else if (x instanceof Expression.Division && x.a instanceof Multiplication && x.a.a instanceof Integer && x.a.b instanceof Expression.Symbol && x.b instanceof Integer) {//!new 2019-06-16
+      if (this.v instanceof Integer) {
+        value = {v: new Exponentiation(this.v, x.a.b), e: x.divide(x.a.b)};
+      } else {
+      value = {v: this.v, e: x};//?
+      }
     } else {
+      if (this.v instanceof Integer && x instanceof Division && x.a instanceof Expression.Symbol && x.b instanceof Integer) {
+        value = {v: new Exponentiation(this.v, x.a), e: x.divide(x.a)};
+      } else {
       throw new RangeError();
+      }
     }
+    this.value = value;
+    return this;
   };
 
   var getVariableInternal = function (t) {
+    if (t instanceof Expression.ExponentiationOfMinusOne) {//TODO: ?
+      return new VIterator({v: t, e: Expression.ONE});
+    }
+    if (t instanceof Expression.ExponentiationOfImaginaryUnit) {//TODO: ?
+      return new VIterator({v: t, e: Expression.ONE});
+    }
     var v = getBase(t);
     var e = getExponent(t);
 
@@ -4393,10 +5505,8 @@ BigInteger.primeFactor = primeFactor;
 
   var getVariable = function (e) {
     //? square roots at first
-    for (var additions = e.summands(); additions != undefined; additions = additions.next()) {
-      var x = additions.value();
-      for (var multiplications = x.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-        var y = multiplications.value();
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
         if (y instanceof NthRoot) {
         //TODO: assert(y instanceof Integer)
           return y;
@@ -4405,7 +5515,7 @@ BigInteger.primeFactor = primeFactor;
     }
     //?
 
-    var result = getVariableInternal(getLastMultiplicationOperand(getFirstAdditionOperand(e))).value().v;
+    var result = getVariableInternal(getLastMultiplicationOperand(getFirstAdditionOperand(e))).next().value.v;
     //!?
     //if (result instanceof NthRoot) {
     //  return undefined;
@@ -4422,22 +5532,36 @@ BigInteger.primeFactor = primeFactor;
 
   Expression.getVariable = getVariable;
 
-  var integerGCD = function (a, b) {
-    if (a.compareTo(Expression.ZERO) < 0) {
-      a = a.negate();
+  var integerGCD = function (x, y) {
+    var a = x;
+    var b = y;
+    while (!b.equals(Expression.ZERO)) {
+      var t = a.remainder(b);
+      a = b;
+      b = t;
     }
-    if (b.compareTo(Expression.ZERO) < 0) {
-      b = b.negate();
-    }
-    return new Integer(BigInteger.gcd(a.value, b.value));
+    return a;
   };
 
-  var getIntegerContent = function (x) {
-    return x instanceof Expression.Complex ? integerGCD(x.real, x.imaginary) : x;
-  };
+  //var getIntegerContent = function (x) {
+  //  return x instanceof Expression.Complex ? integerGCD(x.real, x.imaginary) : x;
+  //};
 
   var complexGCD = function (a, b) {//?
-    return integerGCD(getIntegerContent(a), getIntegerContent(b));
+    // return integerGCD(getIntegerContent(a), getIntegerContent(b));
+    var x = integerGCD(a, b);
+    if (x instanceof Expression.Complex) {
+      //TODO: ?
+      if (x.real.compareTo(Expression.ZERO) === 0) {
+        return x.imaginary;
+      }
+    }
+    if (x instanceof Expression.Integer) {
+      if (x.compareTo(Expression.ZERO) < 0) {
+        x = x.negate();
+      }
+    }
+    return x;
   };
 
   // http://www-troja.fjfi.cvut.cz/~liska/ca/node33.html
@@ -4445,61 +5569,44 @@ BigInteger.primeFactor = primeFactor;
     if (v == undefined) {
       return complexGCD(getConstant(a), getConstant(b));
     }
-    return polynomialGCD(Polynom.toPolynomial(a, v), Polynom.toPolynomial(b, v)).calcAt(v);
-  };
-
-  var polynomialGCD = function (a, b) {
-    //TODO: fix (place condition for degrees earlier - ?)
-    if (a.getDegree() < b.getDegree()) {
-      //!!!
-      var tmp = a;
-      a = b;
-      b = tmp;
+    
+    var r = getReplacement(a, getReplacement(b, v));
+    if (!r.equals(v)) {
+      return substitute(substitute(a, v, r, inverseReplacement(r, v)).gcd(substitute(b, v, r, inverseReplacement(r, v))), v, inverseReplacement(r, v), r);
     }
 
-    var contentA = a.getContent();
-    var contentB = b.getContent();
-    var ppA = a.divideAndRemainder(Polynom.of(contentA), "throw").quotient;
-    var ppB = b.divideAndRemainder(Polynom.of(contentB), "throw").quotient;
-    var A = ppA;
-    var B = ppB;
-    while (!B.equals(Polynom.ZERO)) {
-      var r = pseudoRemainder(A, B);
-      //! 2018-05-12
-      if (!r.equals(Polynom.ZERO)) {
-        // https://en.wikipedia.org/wiki/Polynomial_greatest_common_divisor#Primitive_pseudo-remainder_sequence
-        // RPN("(x^8+x^6-3x^4-3x^3+8x^2+2x-5)/(3x^6+5x^4-4x^2-9x+21)")
-        r = r.divideAndRemainder(Polynom.of(r.getContent()), "throw").quotient;
-        //console.log(r.toString());
-      }
-      //!
-      A = B;
-      B = r;
-    }
-    var c = contentA.gcd(contentB);
-    return Polynom.of(c).multiply(A.divideAndRemainder(Polynom.of(A.getContent()), "throw").quotient);
+    return Polynomial.polynomialGCD(Polynomial.toPolynomial(a, v), Polynomial.toPolynomial(b, v)).calcAt(v);
   };
 
   // ! new 21.12.2013 (square roots)
 
-  var getConjugateFactor = function (a) {
+  var getConjugateFactor = function (e) {
     var r = 1 / 0;
     var p = undefined;
-    for (var additions = a.summands(); additions != undefined; additions = additions.next()) {
-      var x = additions.value();
-      for (var multiplications = x.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-        var y = multiplications.value();
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
         if (y instanceof NthRoot) {
           var degree = y.getDegree();
-          if (r > degree) {
-            p = y.a;
+          var i = y.a instanceof Integer ? y.a : null;
+          if (i == null) {
+            i = QuadraticInteger.toQuadraticInteger(y.a);
+          }
+          if (i == null) {
+            throw new TypeError();
+          }
+          if (r > degree && r === 1 / 0) {
+            //TODO: check !!!
+            p = i;
             r = degree;
           } else if (r === degree) {
             //TODO: assert(y instanceof Integer)
-            if (y.a instanceof Integer) {
-              var z = integerGCD(p, y.a);
-              if (z.compareTo(Expression.ONE) !== 0) {
+            if (i != null) {
+              var z = integerGCD(p, i);
+              if (!z.isUnit()) {
                 p = z;//!
+              }
+              if (z.isUnit() && !(z instanceof Integer) && (p.isUnit() || i.isUnit())) {
+                p = z;//?
               }
             } else {
               throw new TypeError();
@@ -4528,30 +5635,72 @@ BigInteger.primeFactor = primeFactor;
   Expression.getConjugate = getConjugate;
 
   // https://en.wikipedia.org/wiki/Conjugate_(square_roots)
-  Expression.getNthRootConjugate = function (a) {
+  Expression.getNthRootConjugate = function (e) {
+    if (e instanceof Integer) {
+      //optimize to not stop the debugger at common code
+      return null;
+    }
+    if (e instanceof SquareRoot) {
+      //optimize to not stop the debugger at common code
+      return e;
+    }
+    //!2019-10-20 a workaround
+    if (e instanceof Addition &&
+        e.a instanceof Multiplication && e.a.a instanceof Integer && e.a.b instanceof CubeRoot &&
+        e.b instanceof Multiplication && e.b.a instanceof Integer && e.b.b instanceof CubeRoot) {
+      // (aa-ab+bb)
+      return e.a._pow(2).subtract(e.a.multiply(e.b)).add(e.b._pow(2));
+    }
+    //!
+    
   //TODO: fix
   //if (true) return undefined;
-    var tmp = getConjugateFactor(a);
+    var tmp = getConjugateFactor(e);
     var p = tmp.p;
     var r = tmp.r;
     if (p == undefined) {
       return undefined;
     }
-    var polynomial = Polynom.of();
-    for (var additions = a.summands(); additions != undefined; additions = additions.next()) {
-      var x = additions.value();
+    var polynomial = Polynomial.of();
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
       var degree = 0;
       var coefficient = Expression.ONE;
-      for (var multiplications = x.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-        var y = multiplications.value();
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
         if (y instanceof NthRoot && r === y.getDegree()) {
-          if (y.a instanceof Integer) {
+          var i = y.a instanceof Integer ? y.a : null;
+          if (i == null) {
+            i = QuadraticInteger.toQuadraticInteger(y.a);
+          }
+          if (i != null) {
             var j = 0;
-            var a = y.a;
-            while (a.remainder(p).equals(Expression.ZERO)) {
-              a = a.truncatingDivide(p);
-              j += 1;
+            var a = i;
+            if (p.isUnit()) {
+              if (a.isUnit()) {
+                j = 1;
+                a = a.truncatingDivide(p);
+                // a == 3+sqrt(2), p == 1+sqrt(2)
+                while (a.primeFactor().equals(p)) {
+                  j += 1;
+                  a = a.truncatingDivide(p);
+                }
+              } else {
+                if (!(a instanceof Integer)) {
+                //TODO: ?
+                //throw new TypeError();
+                  var tmp = a.truncatingDivide(p);
+                  if (tmp.a * tmp.b >= 0) {
+                    j = 1;
+                    a = tmp;
+                  }
+                }
+              }
+            } else {
+              while (a.isDivisibleBy(p) && j < r) {//?
+                a = a.truncatingDivide(p);
+                j += 1;
+              }
             }
+            a = a.toExpression();
             coefficient = coefficient.multiply(a._nthRoot(r));
             degree += j;
           } else {
@@ -4562,23 +5711,24 @@ BigInteger.primeFactor = primeFactor;
         }
       }
       //TODO: efficiency ?
-      polynomial = polynomial.add(Polynom.of(coefficient).shift(degree));
+      polynomial = polynomial.add(Polynomial.of(coefficient).shift(degree));
     }
     var n = r;
     var x = p;
+    x = x.toExpression();
     var e = polynomial;
-    var conjugate = Polynom.of(n % 2 === 1 ? Expression.ONE : Expression.ONE.negate());
+    var conjugate = Polynomial.of(n % 2 === 1 ? Expression.ONE : Expression.ONE.negate());
     while (e.getDegree() > 0) {
       var k = e.getDegree();
-      var ak = Polynom.of(e.getLeadingCoefficient());
-      var m = Polynom.of(Expression.ONE).shift(n - k);
-      var p = e.multiply(m).subtract(ak.shift(n)).add(ak.multiply(Polynom.of(x)));
+      var ak = Polynomial.of(e.getLeadingCoefficient());
+      var m = Polynomial.of(Expression.ONE).shift(n - k);
+      var p = e.multiply(m).subtract(ak.shift(n)).add(ak.multiply(Polynomial.of(x)));
       while (p.getDegree() >= k) {
         var d = p.getDegree();
         var lc = p.getLeadingCoefficient();
         m = m.multiply(ak);
         p = p.multiply(ak);
-        var t = Polynom.of(lc.negate()).shift(d - k);
+        var t = Polynomial.of(lc.negate()).shift(d - k);
         m = m.add(t);
         p = p.add(e.multiply(t));
       }
@@ -4594,14 +5744,12 @@ BigInteger.primeFactor = primeFactor;
       throw new RangeError();
     }
     var list = [];
-    for (var additions = e.summands(); additions != undefined; additions = additions.next()) {
-      var x = additions.value();
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
       var v = undefined;
       var c = Expression.ONE;
       var NO_VARIABLE = "";
-      for (var multiplications = x.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-        var y = multiplications.value();
-        if (y instanceof Symbol && v == undefined) {
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+        if (y instanceof Expression.Symbol && v == undefined) {
           v = y;
         } else {
           if (!(y instanceof Integer) && !(y instanceof NthRoot)) {
@@ -4634,6 +5782,7 @@ BigInteger.primeFactor = primeFactor;
     if (e instanceof Negation) {
       return has(e.b, Class);
     }
+    
     if (e instanceof Expression.Function) {
       return has(e.a, Class);
     }
@@ -4641,17 +5790,135 @@ BigInteger.primeFactor = primeFactor;
   };
   Expression.has = has;
 
+  var inverseReplacement = function (e, v) {
+    var t = v;
+    while (!e.equals(v)) {
+      if (e instanceof Expression.Exponentiation && e.b instanceof Multiplication && v instanceof Exponentiation) {
+        t = t.pow(e.b.a.inverse());
+        e = e.pow(e.b.a.inverse());
+      } else if (e instanceof Expression.Exponentiation) {
+        t = t.pow(getExponent(e).inverse());
+        e = getBase(e);
+      } else if (e instanceof Addition) {
+        if (!(e.b instanceof Integer)) {
+          throw new RangeError();
+        }
+        t = t.subtract(e.b);
+        e = e.a;
+      } else if (e instanceof Multiplication) {
+        if (!(e.a instanceof Integer)) {
+          throw new RangeError();
+        }
+        t = t.divide(e.a);
+        e = e.b;
+      } else if (e instanceof Division) {
+        if (!(e.b instanceof Integer)) {
+          throw new RangeError();
+        }
+        t = t.multiply(e.b);
+        e = e.a;
+      } else {
+        if (Expression.E === e && getBase(v) === Expression.E) {//!new 2019-09-23
+          t = t.pow(getExponent(v));
+          e = v;
+        } else {
+          throw new TypeError();
+        }
+      }
+    }
+    return t;
+  };
+
+  var h = function (e, n, q) {
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+        if (getBase(q).equals(getBase(y))) {
+          n = n.lcm(getExponent(y).getDenominator());
+        }
+      }
+    }
+    return n;
+  };
+
+  var getReplacement = function (e, v) {
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+        if (y instanceof Expression.Exponentiation && (y.a instanceof Expression.Symbol || y.a instanceof Integer && y.a.compareTo(Expression.ONE) > 0) && y.b instanceof Expression.Division) {
+          if (getBase(v).equals(y.a)) {
+            v = new Expression.Exponentiation(y.a, y.b.b.lcm(getExponent(v).getNumerator()));
+          }
+        } else {
+          //!TODO: fix
+          if (y instanceof Expression.Exponentiation && Expression.has(y.a, Expression.Symbol) && y.b instanceof Expression.Division) {
+            if (getBase(v).equals(y.a)) {
+              v = new Expression.Exponentiation(y.a, y.b.b.lcm(getExponent(v).getNumerator()));
+            } else if (getBase(v) instanceof Expression.Symbol) {
+              if (!(y.a instanceof Expression.Addition && y.a.a.divide(getBase(v)) instanceof Integer && y.a.b instanceof Integer) || !(y.b instanceof Division && y.b.a instanceof Integer && y.b.b instanceof Integer)) {
+                throw new TypeError();
+              }
+              var n = y.b.getDenominator();
+              n = h(e, n, y);//!
+              //TODO: ?
+              //debugger;
+              // sqrt(y.a.a + y.a.b) = t
+              // k * v = y.a.a = t**2 - y.a.b
+              // v = (t**2 - y.a.b) / (y.a.a / v)
+              var t = getBase(v).pow(n).subtract(y.a.b).divide(y.a.a.divide(getBase(v)));
+              return t;
+            }
+          }
+        }
+      }
+    }
+    return v;
+  };
+
+  var substitute = function (e, a, b, inv) {
+    if (e.equals(a)) {
+      return b;
+    }
+    if (e instanceof Expression.Exponentiation) {
+      if (e.equals(inv)) {
+        return a;
+      }
+      if (getBase(e).equals(getBase(inv))) {//!new 2019-09-23
+        return a.pow(getExponent(e).divide(getExponent(inv)));
+        //TODO: add an assertion below 
+      }
+    }
+
+    if (e instanceof Expression.Addition) {
+      return substitute(e.a, a, b, inv).add(substitute(e.b, a, b, inv));
+    }
+    if (e instanceof Expression.Multiplication) {
+      return substitute(e.a, a, b, inv).multiply(substitute(e.b, a, b, inv));
+    }
+    if (e instanceof Expression.Exponentiation) {
+      var x = substitute(e.a, a, b, inv);
+      var y = substitute(e.b, a, b, inv);
+      //console.log(x + ' ' + y + ' ' + a + ' ' + b + ' ' + inv);
+      if (x instanceof Expression.Exponentiation &&
+          getBase(x).equals(getBase(inv)) &&
+          getExponent(inv).getDenominator().remainder(Expression.TWO).equals(Expression.ZERO)) {
+        //TODO: FIX
+        return getBase(x).pow(getExponent(x).multiply(y));
+      }
+      return x.pow(y);
+    }
+    return e;
+  };
+
   Expression.prototype.divideExpression = function (x) {
     var y = this;
     
     //if (Expression.getIdentityMatrixCoefficient(x) != undefined) {
-    //  if (y instanceof Matrix) {
+    //  if (y instanceof Expression.Matrix) {
     //    return Expression.getIdentityMatrixCoefficient(x).divide(y);
     //  }
     //  return Expression.makeIdentityMatrixWithCoefficient(Expression.getIdentityMatrixCoefficient(x).divide(y));
     //}
     //if (Expression.getIdentityMatrixCoefficient(y) != undefined) {
-    //  if (x instanceof Matrix) {
+    //  if (x instanceof Expression.Matrix) {
     //    return x.divide(Expression.getIdentityMatrixCoefficient(y));
     //  }
     //  return Expression.makeIdentityMatrixWithCoefficient(x.divide(Expression.getIdentityMatrixCoefficient(y)));
@@ -4679,20 +5946,20 @@ BigInteger.primeFactor = primeFactor;
       throw new RangeError("NotSupportedError");
     }
 
-    if (x instanceof Matrix && y instanceof Matrix) {
+    if (x instanceof Expression.Matrix && y instanceof Expression.Matrix) {
       // TODO: callback ???
-      return new Matrix(x.matrix.multiply(y.matrix.inverse()));
+      return new Expression.Matrix(x.matrix.multiply(y.matrix.inverse()));
     }
-    if (x instanceof Matrix && y instanceof Expression) {
-      //return new Matrix(x.matrix.scale(y.inverse()));
+    if (x instanceof Expression.Matrix && y instanceof Expression) {
+      //return new Expression.Matrix(x.matrix.scale(y.inverse()));
       return x.multiply(y.inverse());
     }
-    if (x instanceof Expression && y instanceof Matrix) {
+    if (x instanceof Expression && y instanceof Expression.Matrix) {
       if (Expression.callback != undefined) {
         Expression.callback(new Expression.Event(y.matrix.getDeterminantEventType("inverse").type, y));
       }
-      //return new Matrix(y.matrix.inverse().scale(x));
-      return new Matrix(y.matrix.inverse()).multiply(x);
+      //return new Expression.Matrix(y.matrix.inverse().scale(x));
+      return new Expression.Matrix(y.matrix.inverse()).multiply(x);
     }
 
     if (y.equals(Expression.ZERO)) {
@@ -4710,10 +5977,13 @@ BigInteger.primeFactor = primeFactor;
     if (true) { //TODO: remove hack!
       var e = getConjugate(y);
       if (e != undefined) {
+        if (e.equals(Expression.ONE)) {
+          throw new TypeError(); // "assertion"
+        }
         return x.multiply(e).divide(y.multiply(e));
       }
     }
-    
+
     if (true) {//!new 2017-11-25
       var c = Expression.getComplexConjugate(x);
       if (c != undefined) {
@@ -4731,9 +6001,30 @@ BigInteger.primeFactor = primeFactor;
         return y.equals(Expression.ONE) ? x : new Division(x, y);
       }
     }//!
-
-    var v = getVariable(x);//???
+    
+    // check if y is instance of Integer to avoid issues with nth-roots (?) - see a test
+    //TODO: investigate
+    var v = y instanceof Integer ? undefined : getVariable(x);//???
+    //var v = getVariable(x);//???
     //TODO: move?
+
+
+    //!2019-06-16
+    if (v != null) { // e**(1/2)
+      v = getVariable(v);
+      var r = getReplacement(y, getReplacement(x, v));
+      if (!r.equals(v)) {
+        var ir = inverseReplacement(r, v);
+        var a = substitute(x, v, r, ir);
+        var b = substitute(y, v, r, ir);
+        //console.log(a + ' ' + b);
+        var t = a.divide(b);
+        a = substitute(t.getNumerator(), v, ir, r);
+        b = substitute(t.getDenominator(), v, ir, r);
+        return b.equals(Expression.ONE) ? a : new Expression.Division(a, b);
+      }
+    }
+
 
     // gcd
     if (v == undefined) {
@@ -4744,15 +6035,15 @@ BigInteger.primeFactor = primeFactor;
         return x.divide(y);
       } 
     } else {
-      var px = Polynom.toPolynomial(x, v);
-      var py = Polynom.toPolynomial(y, v);
+      var px = Polynomial.toPolynomial(x, v);
+      var py = Polynomial.toPolynomial(y, v);
       //!TODO: remove - performance optimization
       var t = px.divideAndRemainder(py, "undefined");
-      if (t != undefined && t.remainder.equals(Polynom.ZERO)) {
+      if (t != undefined && t.remainder.equals(Polynomial.ZERO)) {
         return t.quotient.calcAt(v);
       }
       //!
-      var g = polynomialGCD(px, py);
+      var g = Polynomial.polynomialGCD(px, py);
       if (g.getDegree() !== 0 || !g.getLeadingCoefficient().equals(Expression.ONE)) { // g !== 1
         var x2 = px.divideAndRemainder(g, "throw").quotient;
         var y2 = py.divideAndRemainder(g, "throw").quotient;
@@ -4770,7 +6061,7 @@ BigInteger.primeFactor = primeFactor;
   };
 
   function Expression() {
-    throw new Error("Do not call for better performance");
+    throw new TypeError("Do not call for better performance");
   }
 
   Expression.callback = undefined;
@@ -4782,16 +6073,16 @@ BigInteger.primeFactor = primeFactor;
   };
 
   Expression.prototype.compare4Multiplication = function (y) {
-    throw new Error(this.toString());
+    throw new TypeError(this.toString());
   };
   Expression.prototype.compare4MultiplicationInteger = function (x) {
-    throw new Error();
+    throw new TypeError();
   };
   Expression.prototype.compare4MultiplicationSymbol = function (x) {
-    throw new Error();
+    throw new TypeError();
   };
   Expression.prototype.compare4MultiplicationNthRoot = function (x) {
-    throw new Error();
+    throw new TypeError();
   };
 
   Expression.prototype.negate = function () {
@@ -4804,6 +6095,13 @@ BigInteger.primeFactor = primeFactor;
     return this.add(y.negate());
   };
   Expression.prototype.divide = function (y) {
+    //!2019-04-22
+    if (this.equals(y)) { //!TODO: remove - a hack to avoid some exceptions
+      if (this instanceof IdentityMatrix) {
+        return this;
+      }
+      return Expression.ONE;
+    }
     return y.divideExpression(this);
   };
   Expression.prototype.multiply = function (y) {
@@ -4823,16 +6121,17 @@ BigInteger.primeFactor = primeFactor;
   Expression.prototype.inverse = function () {
     return Expression.ONE.divide(this);
   };
+  Expression.prototype.exp = function () {
+    return Expression.E.pow(this);
+  };
+
 
   //TODO: use in Expression#getCoefficients -?
-  var variables = function (x) {
+  var variables = function (e) {
     var result = [];
-    for (var additions = x.summands(); additions != undefined; additions = additions.next()) {
-      var fx = additions.value();
-      for (var multiplications = fx.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-        var t = multiplications.value();
-        for (var variables = getVariableInternal(t); variables != undefined; variables = variables.next()) {
-          var ve = variables.value();
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+        for (var variables = getVariableInternal(y), ve = variables.next().value; ve != null; ve = variables.next().value) {
           if (!(ve.v instanceof Integer)) {
             result.push(ve.v);
           }
@@ -4845,15 +6144,27 @@ BigInteger.primeFactor = primeFactor;
   //TODO: remove - performance optimization
   var getCommonVariable = function (x, y) {
     var a = variables(x);
+    var b = variables(y);
+    /*
     for (var i = 0; i < a.length; i += 1) {
       if (a[i] instanceof NthRoot) {
         return a[i];
       }
     }
-    var b = variables(y);
     for (var i = 0; i < b.length; i += 1) {
       if (b[i] instanceof NthRoot) {
         return b[i];
+      }
+    }
+    */
+    for (var i = 0; i < a.length; i += 1) {
+      if (a[i] instanceof Addition) {
+        return variables(a[i])[0];//TODO: fix
+      }
+    }
+    for (var i = 0; i < b.length; i += 1) {
+      if (b[i] instanceof Addition) {
+        return variables(b[i])[0];//TODO: fix
       }
     }
     for (var i = 0; i < a.length; i += 1) {
@@ -4890,27 +6201,30 @@ BigInteger.primeFactor = primeFactor;
     }
   };
 
-  function Symbol(symbol) {
+  Expression.Symbol = function (symbol) {
     //Expression.call(this);
     this.symbol = symbol;
-  }
+  };
 
-  Symbol.prototype = Object.create(Expression.prototype);
+  Expression.Symbol.prototype = Object.create(Expression.prototype);
 
-  Symbol.prototype.compare4Multiplication = function (y) {
+  Expression.Symbol.prototype.compare4Multiplication = function (y) {
     return y.compare4MultiplicationSymbol(this);
   };
-  Symbol.prototype.compare4MultiplicationInteger = function (x) {
+  Expression.Symbol.prototype.compare4MultiplicationInteger = function (x) {
     return -1;
   };
-  Symbol.prototype.compare4MultiplicationSymbol = function (x) {
+  Expression.Symbol.prototype.compare4MultiplicationSymbol = function (x) {
     return x.symbol < this.symbol ? -1 : (this.symbol < x.symbol ? +1 : 0);
   };
-  Symbol.prototype.compare4MultiplicationNthRoot = function (x) {
+  Expression.Symbol.prototype.compare4MultiplicationNthRoot = function (x) {
     return -1;
   };
 
-  Symbol.prototype.toString = function (options) {
+  Expression.Symbol.prototype.toString = function (options) {
+    if (this.symbol === '\u2147') {
+      return 'e';//!
+    }
     return this.symbol;
   };
 
@@ -4949,13 +6263,16 @@ BigInteger.primeFactor = primeFactor;
     if (y.compareTo(Expression.ZERO) < 0) {
       return Expression.ONE.divide(x.pow(y.negate()));
     }
-    if (x instanceof Matrix) {
+    if (x instanceof Expression.Matrix) {
       if (y.compareTo(Expression.ONE) > 0) {
         if (Expression.callback != undefined) {
-          Expression.callback(new Expression.Event("pow", x, new Expression.Matrix(self.Matrix.I(1).map(function () { return y; }))));
+          Expression.callback(new Expression.Event("pow", x, new Expression.Matrix(Matrix.I(1).map(function () { return y; }))));
         }
       }
-      return new Matrix(x.matrix.pow(Number.parseInt(y.toString(), 10)));
+      if (y.toNumber() > 9007199254740991) {
+        return x.pow(y.truncatingDivide(Expression.TWO)).pow(Expression.TWO).multiply(x.pow(y.remainder(Expression.TWO)));
+      }
+      return new Expression.Matrix(x.matrix.pow(y.toNumber()));
     }
     if (y.equals(Expression.ZERO)) {
       return Expression.ONE;
@@ -4964,17 +6281,28 @@ BigInteger.primeFactor = primeFactor;
       return x;
     }
 
-    if (x instanceof Symbol) {
+    if (x instanceof Expression.Symbol) {
       return new Exponentiation(x, y);
     }
     if (x instanceof Exponentiation) {
+      var t = x.b.multiply(y);
+      if (t.getNumerator() instanceof Integer && t.getDenominator() instanceof Integer) {//TODO: ?
+        var i = t.getNumerator().truncatingDivide(t.getDenominator());
+        if (i.compareTo(Expression.ZERO) > 0) {
+          return x.a.pow(i).multiply(x.a.pow(t.subtract(i)));
+        }
+      }
       return x.a.pow(x.b.multiply(y));
     }
     if (x instanceof Integer && (x.compareTo(Expression.ZERO) === 0 || x.compareTo(Expression.ONE) === 0 || x.compareTo(Expression.ONE.negate()) === 0)) {
       return y.remainder(Expression.TWO).compareTo(Expression.ZERO) === 0 ? x.multiply(x) : x;
     }
+    if (x.equals(Expression.I)) {
+      y = y.remainder(Expression.TWO.add(Expression.TWO));
+      return Expression.pow(x, y);
+    }
     // assert(x instanceof Operation || x instanceof Integer);
-    return Expression.pow(x, Number.parseInt(y.toString(), 10));
+    return Expression.pow(x, y.toNumber());
   };
 
   Integer.prototype.compare4Multiplication = function (y) {
@@ -4992,10 +6320,16 @@ BigInteger.primeFactor = primeFactor;
   };
 
   Integer.prototype.negate = function () {
-    return new Integer(BigInteger.negate(this.value));
+    return new Integer(BigInteger.unaryMinus(this.value));
+  };
+  Integer.prototype.isUnit = function () {
+    return this.equals(Expression.ONE) || this.equals(Expression.ONE.negate());
+  };
+  Integer.prototype.toExpression = function () {
+    return this;
   };
   Integer.prototype.compareTo = function (y) {
-    return BigInteger.compareTo(this.value, y.value);
+    return BigInteger.lessThan(this.value, y.value) ? -1 : (BigInteger.greaterThan(this.value, y.value) ? +1 : 0);
   };
   Integer.prototype.add = function (y) {
     return y.addInteger(this);
@@ -5020,6 +6354,9 @@ BigInteger.primeFactor = primeFactor;
       throw new RangeError("ArithmeticException");
     }
     var gInteger = integerGCD(x, y);
+    if (gInteger.compareTo(Expression.ZERO) < 0) {
+      gInteger = gInteger.negate();
+    }
     if (y.compareTo(Expression.ZERO) < 0) {
       gInteger = gInteger.negate();
     }
@@ -5028,82 +6365,116 @@ BigInteger.primeFactor = primeFactor;
     return y.compareTo(Expression.ONE) === 0 ? x : new Division(x, y);
   };
   Integer.prototype.truncatingDivide = function (y) {
-    return new Integer(BigInteger.divide(this.value, y.value));
+    return y.truncatingDivideInteger(this);
+  };
+  Integer.prototype.truncatingDivideInteger = function (x) {
+    var y = this;
+    return new Integer(BigInteger.divide(x.value, y.value));
+  };
+  Integer.prototype.isDivisibleBy = function (y) {
+    return y.isDivisibleByInteger(this);
+  };
+  Integer.prototype.isDivisibleByInteger = function (x) {
+    return x.remainder(this).equals(Expression.ZERO);
   };
   Integer.prototype.remainder = function (y) {
-    return new Integer(BigInteger.remainder(this.value, y.value));
+    return y.remainderInteger(this);
+  };
+  Integer.prototype.remainderInteger = function (x) {
+    var y = this;
+    return new Integer(BigInteger.remainder(x.value, y.value));
+  };
+  Integer.prototype.primeFactor = function () {
+    return integerPrimeFactor(this);
+  };
+  Integer.prototype.toNumber = function () {
+    return BigInteger.toNumber(this.value);
+  };
+  Integer.prototype.toBigInt = function () {
+    return this.toNumber();
+    //return typeof BigInt !== "undefined" ? BigInt(this.value) : BigInteger.toNumber(this.value);
   };
   Integer.prototype.toString = function (options) {
     return this.value.toString();
   };
 
-  Integer.parseInteger = function (s) {
-    return new Integer(BigInteger.parseInt(s, 10));
+  Integer.fromNumber = function (n) {
+    return new Integer(BigInteger.BigInt(n));
+  };
+  Integer.fromString = function (s) {
+    return new Integer(BigInteger.BigInt(s));
+  };
+  Integer.fromBigInt = function (i) {
+    return new Integer(BigInteger.BigInt(i.toString()));
   };
 
-  Expression.ZERO = Integer.parseInteger("0");
-  Expression.ONE = Integer.parseInteger("1");
-  Expression.TWO = Integer.parseInteger("2");
-  Expression.TEN = Integer.parseInteger("10");
+  Expression.ZERO = Integer.fromNumber(0);
+  Expression.ONE = Integer.fromNumber(1);
+  Expression.TWO = Integer.fromNumber(2);
+  Expression.TEN = Integer.fromNumber(10);
 
 
   
-  function Matrix(matrix) {
+  Expression.Matrix = function (matrix) {
     //Expression.call(this);
     this.matrix = matrix;
-  }
+  };
 
-  Matrix.prototype = Object.create(Expression.prototype);
+  Expression.Matrix.fromArray = function (rows) {
+    return new Expression.Matrix(Matrix.padRows(rows, null));
+  };
 
-  Matrix.prototype.equals = function (x) {
-    if (!(x instanceof Matrix)) {
+  Expression.Matrix.prototype = Object.create(Expression.prototype);
+
+  Expression.Matrix.prototype.equals = function (x) {
+    if (!(x instanceof Expression.Matrix)) {
       return false;
     }
     return this.matrix.eql(x.matrix);
   };
 
-  Matrix.prototype.compare4Multiplication = function (x) {
-    if (x instanceof Matrix) {
+  Expression.Matrix.prototype.compare4Multiplication = function (x) {
+    if (x instanceof Expression.Matrix) {
       return 0;
     }
     return +1;
   };
-  Matrix.prototype.compare4MultiplicationNthRoot = function (x) {
+  Expression.Matrix.prototype.compare4MultiplicationNthRoot = function (x) {
     return +1;
   };
 
-  Matrix.prototype.multiply = function (y) {
+  Expression.Matrix.prototype.multiply = function (y) {
     return y.multiplyMatrix(this);
   };
   Expression.prototype.multiplyMatrix = function (x) {
     var t = getIdentityMatrixCoefficient(this);
     if (t != undefined) {
-      return new Matrix(x.matrix.scale(t));
+      return new Expression.Matrix(x.matrix.scale(t));
     }
     return this.multiplyExpression(x);
   };
-  Matrix.prototype.multiplyExpression = function (x) {
+  Expression.Matrix.prototype.multiplyExpression = function (x) {
     var t = getIdentityMatrixCoefficient(x);
     if (t != undefined) {
-      return new Matrix(this.matrix.scale(t));
+      return new Expression.Matrix(this.matrix.scale(t));
     }
     return Expression.prototype.multiplyExpression.call(this, x);
   };
-  Matrix.prototype.multiplyMatrix = function (x) {
+  Expression.Matrix.prototype.multiplyMatrix = function (x) {
     if (Expression.callback != undefined) {
       Expression.callback(new Expression.Event("multiply", x, this));
     }
-    return new Matrix(x.matrix.multiply(this.matrix));
+    return new Expression.Matrix(x.matrix.multiply(this.matrix));
   };
-  Matrix.prototype.compare4MultiplicationSymbol = function (x) {
+  Expression.Matrix.prototype.compare4MultiplicationSymbol = function (x) {
     return +1;
   };
-  Matrix.prototype.multiplyDivision = Matrix.prototype.multiplyExpression;
-  Matrix.prototype.add = function (y) {
+  Expression.Matrix.prototype.multiplyDivision = Expression.Matrix.prototype.multiplyExpression;
+  Expression.Matrix.prototype.add = function (y) {
     return y.addMatrix(this);
   };
-  Matrix.prototype.addMatrix = function (x) {
-    return new Matrix(x.matrix.add(this.matrix));
+  Expression.Matrix.prototype.addMatrix = function (x) {
+    return new Expression.Matrix(x.matrix.add(this.matrix));
   };
 
   var isScalar = function (x) {
@@ -5116,7 +6487,7 @@ BigInteger.primeFactor = primeFactor;
     if (x instanceof MatrixSymbol) {
       return false;
     }
-    if (x instanceof Symbol) {
+    if (x instanceof Expression.Symbol) {
       return true;
     }
     if (x instanceof BinaryOperation) {
@@ -5158,19 +6529,19 @@ BigInteger.primeFactor = primeFactor;
     if (t != undefined) {
       //?
       if (x.matrix.isSquare()) {
-        return new Matrix(self.Matrix.I(x.matrix.rows()).scale(t)).add(x);
+        return new Expression.Matrix(Matrix.I(x.matrix.rows()).scale(t)).add(x);
       } else {
         throw new RangeError("NonSquareMatrixException");
       }
     }
     return this.addExpression(x);
   };
-  Matrix.prototype.addExpression = function (x) {
+  Expression.Matrix.prototype.addExpression = function (x) {
     var t = getIdentityMatrixCoefficient(x);
     if (t != undefined) {
       //?
       if (this.matrix.isSquare()) {
-        return this.add(new Matrix(self.Matrix.I(this.matrix.rows()).scale(t)));
+        return this.add(new Expression.Matrix(Matrix.I(this.matrix.rows()).scale(t)));
       } else {
         throw new RangeError("NonSquareMatrixException");
       }
@@ -5178,11 +6549,11 @@ BigInteger.primeFactor = primeFactor;
     return Expression.prototype.addExpression.call(this, x);
   };
 
-  Matrix.prototype.toString = function (options) {
+  Expression.Matrix.prototype.toString = function (options) {
     return this.matrix.toString(setTopLevel(true, options));
   };
 
-  Matrix.prototype.isExact = function () {
+  Expression.Matrix.prototype.isExact = function () {
     return this.matrix.isExact();
   };
 
@@ -5209,6 +6580,9 @@ BigInteger.primeFactor = primeFactor;
   Expression.setTopLevel = setTopLevel;
 
   BinaryOperation.prototype.toString = function (options) {
+    //if (this instanceof Division && this.isNegative()) {
+    //  return '-' + this.negateCarefully().toString(options);
+    //}
     var a = this.a;
     var b = this.b;
     var isSubtraction = false;
@@ -5240,7 +6614,7 @@ BigInteger.primeFactor = primeFactor;
     }
     return (fa ? "(" : "") + a.toString(setTopLevel(fa || options == undefined || options.isTopLevel, options)) + (fa ? ")" : "") + s + (fb ? "(" : "") + b.toString(setTopLevel(fb, options)) + (fb ? ")" : "");
   };
-
+  
   //?
   Expression.prototype.unwrap = function () {
     return this;
@@ -5251,6 +6625,13 @@ BigInteger.primeFactor = primeFactor;
   }
 
   Exponentiation.prototype = Object.create(BinaryOperation.prototype);
+  
+  Exponentiation.prototype.compare4Multiplication = function () {
+    return +1;
+  };
+  Exponentiation.prototype.compare4MultiplicationInteger = function () {
+    return -1;
+  };
 
   function Multiplication(a, b) {
     BinaryOperation.call(this, a, b);
@@ -5261,13 +6642,46 @@ BigInteger.primeFactor = primeFactor;
   Multiplication.prototype.multiply = function (y) {
     return y.multiplyExpression(this);
   };
+  //TODO:
   var compare4Multiplication2 = function (x, y) {//TODO: fix
+
+//  && x.n !== y.n
+    if (x instanceof NthRoot && y instanceof NthRoot) {//TODO: fix
+      if (x.multiply(y).equals(new Expression.Multiplication(x, y))) {
+        return -1;
+      }
+      if (x.multiply(y).equals(new Expression.Multiplication(y, x))) {
+        return +1;
+      }
+      return 0;
+    }
+/*
+    //!2019-04-22
+    if (x instanceof NthRoot && y instanceof NthRoot && x.n === y.n) {//TODO: fix
+      if (x.a instanceof Integer && y.a instanceof Integer) {
+        return 0;
+      }
+      if (x.a instanceof Addition && y.a instanceof Integer) {
+        return 0;//TODO: fix
+      }
+      if (x.a instanceof Integer && y.a instanceof Addition) {
+        return 0;//TODO: fix
+      }
+      // -(2^0.5+1)^0.5*(2*2^0.5+2)^0.5
+      if (x.a instanceof Addition && y.a instanceof Addition) {
+        return 0;//TODO: fix
+      }
+      // 3 and 3^n
+      return compare4Multiplication(x.a, y.a);
+    }
+  */
     if (x instanceof Integer && y instanceof Exponentiation) {
       return -1;//?
     }
     if (x instanceof Exponentiation && y instanceof Integer) {
       return +1;//?
     }
+
     return compare4Multiplication(getBase(x), getBase(y));
   };
 
@@ -5373,17 +6787,17 @@ BigInteger.primeFactor = primeFactor;
   Integer.prototype.equalsInteger = function (x) {
     return x.compareTo(this) === 0;
   };
-  Symbol.prototype.equals = function (b) {
-    return b instanceof Symbol && this.symbol === b.symbol;
+  Expression.Symbol.prototype.equals = function (b) {
+    return b instanceof Expression.Symbol && this.symbol === b.symbol;
   };
   BinaryOperation.prototype.equals = function (b) {
     return b instanceof BinaryOperation && this.getS() === b.getS() && this.a.equals(b.a) && this.b.equals(b.b);
   };
 
   function MatrixSymbol(symbol) {//TODO: only for square matrix !!!
-    Symbol.call(this, symbol);
+    Expression.Symbol.call(this, symbol);
   }
-  MatrixSymbol.prototype = Object.create(Symbol.prototype);
+  MatrixSymbol.prototype = Object.create(Expression.Symbol.prototype);
 
   Exponentiation.prototype.inverse = function () {
     return this.pow(Expression.ONE.negate());
@@ -5397,18 +6811,22 @@ BigInteger.primeFactor = primeFactor;
   Expression.prototype.compare4MultiplicationMatrixSymbol = function (x) {
     return +1;
   };
-  Matrix.prototype.compare4MultiplicationMatrixSymbol = function (x) {
+  Expression.Matrix.prototype.compare4MultiplicationMatrixSymbol = function (x) {
     return x instanceof IdentityMatrix ? +1 : -1;//?
   };
   MatrixSymbol.prototype.compare4MultiplicationMatrixSymbol = function (x) {
-    var c = Symbol.prototype.compare4MultiplicationSymbol.call(this, x);
+    var c = Expression.Symbol.prototype.compare4MultiplicationSymbol.call(this, x);
     return c === +1 ? -1 : c;
   };
   MatrixSymbol.prototype.compare4MultiplicationSymbol = function (x) {
     return -1;
   };
   MatrixSymbol.prototype.equals = function (b) {
-    return b instanceof MatrixSymbol && Symbol.prototype.equals.call(this, b);
+    return b instanceof MatrixSymbol && Expression.Symbol.prototype.equals.call(this, b);
+  };
+  MatrixSymbol.prototype.transpose = function () {
+    // quick solution:
+    return new Expression.Exponentiation(this, new Expression.Symbol("T")); // TODO: fix
   };
   //...
 
@@ -5421,6 +6839,12 @@ BigInteger.primeFactor = primeFactor;
   IdentityMatrix.prototype.multiply = function (y) {
     return y.multiplyIdentityMatrix(this);
   };
+  IdentityMatrix.prototype.multiplyAddition = function (x) {
+    if (isScalar(x)) {
+      return new Multiplication(x, this);
+    }
+    return Expression.prototype.multiplyAddition.call(this, x);
+  };
   Expression.prototype.multiplyIdentityMatrix = function (x) {
     return this.multiplyExpression(x);
   };
@@ -5428,7 +6852,7 @@ BigInteger.primeFactor = primeFactor;
     return new IdentityMatrix(this.symbol);
   };
   IdentityMatrix.prototype.addMatrix = function (x) {
-    return x.add(new Matrix(self.Matrix.I(x.matrix.rows())));
+    return x.add(new Expression.Matrix(Matrix.I(x.matrix.rows())));
   };
   IdentityMatrix.prototype.add = function (y) {
     return y.addIdentityMatrix(this);
@@ -5436,8 +6860,8 @@ BigInteger.primeFactor = primeFactor;
   Expression.prototype.addIdentityMatrix = function (x) {
     return this.addExpression(x);//?
   };
-  Matrix.prototype.addIdentityMatrix = function (x) {
-    return new Matrix(self.Matrix.I(this.matrix.rows())).add(this);
+  Expression.Matrix.prototype.addIdentityMatrix = function (x) {
+    return new Expression.Matrix(Matrix.I(this.matrix.rows())).add(this);
   };
   IdentityMatrix.prototype.multiplyDivision = function (x) {
     if (isScalar(x)) {
@@ -5449,7 +6873,7 @@ BigInteger.primeFactor = primeFactor;
   Expression.IdentityMatrix = IdentityMatrix;
 
   BinaryOperation.prototype.getS = function () {
-    throw new Error("abstract");
+    throw new TypeError("abstract");
   };
   Exponentiation.prototype.getS = function () {
     return "^";
@@ -5582,13 +7006,49 @@ BigInteger.primeFactor = primeFactor;
   };
 
   NthRoot.prototype.toString = function (options) {
-    var fa = this.a.getPrecedence() < this.getPrecedence();
+    var fa = this.a.getPrecedence() <= this.getPrecedence();
     return (fa ? "(" : "") + this.a.toString(setTopLevel(fa || options == undefined || options.isTopLevel, options)) + (fa ? ")" : "") + "^" + (this.n === 2 ? "0.5" : "(1/" + this.n + ")");
   };
 
   NthRoot.prototype.getDegree = function () {
     return this.n;
   };
+  
+  function ngcd(a, b) {
+    while (b != 0) {
+      var t = a % b;
+      a = b;
+      b = t;
+    }
+    return a;
+  }
+  function isPrime(n) {
+    if (typeof n === "bigint") {//TODO: ?
+      return n === BigInt(primeFactor(BigInteger.BigInt(n.toString())).toString());
+    }
+    return n === primeFactor(n);
+  }
+
+  function sortKeys(object) {
+    var keys = [];
+    for (var key in object) {
+      if (Object.prototype.hasOwnProperty.call(object, key)) {
+        keys.push(Number.parseInt(key, 10));
+      }
+    }
+    keys.sort(function (a, b) {
+      return a - b;
+    });
+    var result = {};
+    for (var i = 0; i < keys.length; i++) {
+      result[keys[i]] = object[keys[i]];
+    }
+    return result;
+  }
+  
+  function isPerfectCube(d) {
+    return d._nthRoot(3) instanceof Expression.Integer;
+  }
 
   Expression.prototype._nthRoot = function (n) {
     if (n > 9007199254740991) {
@@ -5609,7 +7069,7 @@ BigInteger.primeFactor = primeFactor;
           // a = sqrt(v+t)/sqrt(2)
           // b = sqrt(v-t)/sqrt(2)
           var tt = v.multiply(v).subtract(u.multiply(u));
-          var t = tt.compareTo(Expression.ZERO) >= 0 ? tt.squareRoot() : undefined;
+          var t = tt instanceof Integer && tt.compareTo(Expression.ZERO) >= 0 ? tt.squareRoot() : undefined;
           if (t != undefined && (t instanceof Integer)) {//?
             var aa = v.add(t);
             var a = aa.compareTo(Expression.ZERO) >= 0 ? aa.squareRoot().divide(Expression.TWO.squareRoot()) : undefined;
@@ -5629,10 +7089,45 @@ BigInteger.primeFactor = primeFactor;
           var g = aa.gcd(bb).squareRoot();
           if (!g.equals(Expression.ONE)) {
             var v = a.divide(g).add(b.divide(g)).squareRoot().multiply(g.squareRoot());
-            if (global.hit != undefined) {
-              global.hit({rootFromAddition: x.toString()});
+            if (typeof hit === "function") {
+              hit({rootFromAddition: x.toString()});
             }
             return v;
+          }
+        }
+      }
+    }
+    if (n === 3) {//? new: 2019-08-18
+      if (x instanceof Addition) {
+        if ((x.a instanceof SquareRoot || x.a instanceof Multiplication && x.a.a instanceof Integer && x.a.b instanceof SquareRoot) && x.b instanceof Integer) {
+          // (5^0.5+3)/2 or (-5^0.5+3)/2
+          var u = x.a;
+          var v = x.b;
+          var d = u.multiply(u).subtract(v.multiply(v));
+          if (isPerfectCube(d)) {//?
+            // (a+b)^3 = aaa+3aab+3bba+bbb = u+v
+            // aaa+3bba = v, bb=(v-aaa)/(3a)
+            // 3aab+bbb = u, b(3aa+bb)=u, b=u/(3aa+bb), bb=u**2/(3aa+bb)**2
+            // (9aaa+(v-aaa))**2*(v-aaa) = 27*aaa*u**2
+
+            // t = aaa
+            // (9t+(v-t))**2*(v-t) = 27*t*u**2
+
+            var t = new Expression.Symbol('t');
+            //var eq = ExpressionParser.parse('(9t+(v-t))**2*(v-t) - 27*t*u**2', new RPN.Context(function (id) {
+            //  return id === 'v' ? v : (id === 'u' ? u : (id === 't' ? t : undefined));
+            //})).simplify();
+            var NINE = Expression.Integer.fromNumber(9);
+            var TWENTY_SEVEN = Expression.Integer.fromNumber(27);
+            var eq = Expression.pow(NINE.multiply(t).add(v.subtract(t)), 2).multiply(v.subtract(t)).subtract(TWENTY_SEVEN.multiply(t).multiply(Expression.pow(u, 2)));
+            var p = Polynomial.toPolynomial(eq, t);
+            p = p.scale(p.getContent().inverse());
+            var t = p.doRationalRootTest();
+            if (t != null) {
+              var a = t._nthRoot(3);
+              var b = v.subtract(t).divide(a).divide(Expression.Integer.fromNumber(3))._nthRoot(2);
+              return a.add(b);
+            }
           }
         }
       }
@@ -5640,67 +7135,175 @@ BigInteger.primeFactor = primeFactor;
 
     //?
     if (x instanceof NthRoot) {
-      if (global.hit != undefined) {
-        global.hit({rootFromRoot: ""});
+      if (typeof hit === "function") {
+        hit({rootFromRoot: ""});
       }
       return x.a._nthRoot(x.n * n);
     }
-    if (x instanceof Division) {
-      return x.a._nthRoot(n).divide(x.b._nthRoot(n));
-    }
-    if (x instanceof Multiplication) {
-      return x.a._nthRoot(n).multiply(x.b._nthRoot(n));
-    }
-    if (x instanceof Integer) {
-      if (x.compareTo(Expression.ZERO) < 0) {
-        if (n % 2 === 0) {
-          throw new RangeError("NotSupportedError");
+    if (x instanceof Division || x instanceof Multiplication) {
+      if (n % 2 !== 0 || x.a instanceof Integer && x.a.compareTo(Expression.ZERO) > 0 ||
+                         x.b instanceof Integer && x.b.compareTo(Expression.ZERO) > 0) {//TODO: fix
+        if (x instanceof Division) {
+          return x.a._nthRoot(n).divide(x.b._nthRoot(n));
+        }
+        if (x instanceof Multiplication) {
+          return x.a._nthRoot(n).multiply(x.b._nthRoot(n));
         }
       }
-      if (x.compareTo(Expression.ZERO) === 0) {
-        return x;
+    }
+    var qi = x instanceof Integer ? x : null;
+    var qq = QuadraticInteger.toQuadraticInteger(x);
+    // sqrt(2sqrt(2)+2) "(2*2^0.5+2)^0.5"
+    // sqrt(sqrt(2)+2) "(2^0.5+1)^0.5*2^(1/4)"
+    // sqrt(4sqrt(2)+4) 2*(2^0.5+1)^0.5
+    // sqrt(2sqrt(2)+4) (2*2^0.5+2)^0.5*2^(1/4)
+
+    //TODO: fix for !isPrime(qq.D)
+    //if (qq != null && (isPrime(qq.D) && (qq.a / ngcd(qq.a, qq.b)) % qq.D == 0 || !isPrime(qq.D) && qq.a % qq.D == 0 && ngcd(qq.a, qq.b) % qq.D != 0)) {
+      //var D = Expression.Integer.fromNumber(qq.D)._nthRoot(2);
+      //return D._nthRoot(n).multiply(x.divide(D)._nthRoot(n));
+    //}
+    
+    //!
+    if (qq == null && x instanceof Expression.Addition) {
+      if (x.a instanceof Multiplication && x.b instanceof Multiplication) {
+        var g = x.a.pow(Expression.TWO).gcd(x.b.pow(Expression.TWO)).squareRoot();
+        if (!g.equals(Expression.ONE)) {
+          return g._nthRoot(n).multiply(x.divide(g)._nthRoot(n));
+        }
+      }
+    }
+    //!
+
+    if (qq != null) {
+      if (n !== 2 && n % 2 === 0) {
+        //TODO: check
+        return x.squareRoot()._nthRoot(n / 2);
+      }
+      if (n === 2 || n === 3 && qq.isValid()) {//Note: isValid should be checked here
+      //if (qq.norm() === -1 * Math.pow(ngcd(qq.a, qq.b), 2)) {
+        if (qq.isPositive()) {
+        qi = qq;
+        } else {
+          return Expression.ONE.negate()._nthRoot(n).multiply(this.negate()._nthRoot(n));
+        }
+      //}
+      }
+    }
+    if (qi != null) {
+      x = qi;//TODO:
+      if (x instanceof Integer && x.compareTo(Expression.ZERO) < 0) {
+        if (n % 2 === 0) {
+          if (n === 2) {//TODO: ?
+            return Expression.I.multiply(this.negate()._nthRoot(n));
+          }
+          throw new RangeError("NotSupportedError");
+        }
+        return this.negate()._nthRoot(n).negate();
+      }
+      if (x.equals(Expression.ZERO)) {
+        return this;
       }
       var makeRoot = function (i, n) {
         return n === 1 ? i : (n === 2 ? new SquareRoot(i) : (n === 3 ? new CubeRoot(i) : new NthRoot("n" + "-root", i, n)));
       };
       var roots = {};
-      var i = x.compareTo(Expression.ZERO) < 0 ? x.negate() : x;
-      while (i.compareTo(Expression.ONE) > 0) {
-        var d = primeFactor(i);
-        var e = 0;
-        while (i.remainder(d).compareTo(Expression.ZERO) === 0) {
-          i = i.truncatingDivide(d);
-          e += 1;
-        }
-        while (e !== 0) {
-          var g = e;
-          while (n % g !== 0) {
-            g -= 1;
+      var i = x;
+      while (!i.equals(Expression.ONE)) {
+        var d = i.primeFactor();
+        if (d instanceof QuadraticInteger) {
+          if (n !== 2 && n !== 3) {
+            throw new TypeError(); // "assertion"
           }
+          if (d.a * d.b < 0) {
+            return x.toExpression().divide(Expression.pow(d.toExpression(), n))._nthRoot(n).multiply(d.toExpression());
+          }
+          var s = d.norm();
+          // https://brownmath.com/alge/nestrad.htm#SurveyDoable
+          var isPerfectSquare = function (n) {
+            if (typeof n === "number") {
+              return Math.pow(Math.floor(Math.sqrt(n) + 0.5), 2) === n;
+            }
+            var s = BigInt(nthRoot(BigInteger.BigInt(n.toString()), 2).toString());
+            return s * s === n;
+          };
+          //TODO: s >= 0 - ?
+          if (d.b != 0 && d.a != 0 && s >= 0 && isPerfectSquare(s)) {
+            if (n === 2) {
+            return x.toExpression().divide(d.toExpression())._nthRoot(2).multiply(d.toExpression()._nthRoot(2));
+            }
+          }
+        }
+        var e = 0;
+        if (i.isUnit()) {
+          //TODO: 
+          // d should be a https://en.wikipedia.org/wiki/Fundamental_unit_(number_theory)
+          while (!i.equals(Expression.ONE)) {
+            i = i.truncatingDivide(d);
+            e += 1;
+          }
+        } else {
+          while (i.isDivisibleBy(d)) {
+            i = i.truncatingDivide(d);
+            e += 1;
+          }
+        }
+        d = d.toExpression();
+        var nn = n;
+        if (d instanceof NthRoot) {
+          nn *= d.n;
+          d = d.a;
+        }
+        var t = ngcd(nn, e);
+        nn /= t;//?
+        e /= t;//?
+
+        while (e !== 0) {
+          //var g = e;
+          //while (nn % g !== 0) {
+          //  g -= 1;
+          //}
+          var g = e >= nn ? nn : 1;
 
           var e1 = Math.floor(e / g);
-          var k = Math.floor(n / g);
-          roots["~" + k] = (roots["~" + k] || Expression.ONE).multiply(Expression.pow(d, e1));
+          var k = Math.floor(nn / g);
+          roots[k] = (roots[k] || Expression.ONE).multiply(Expression.pow(d, e1));
 
           e = e - g * e1; // e = e % g;
         }
       }
       var y = Expression.ONE;
+      roots = sortKeys(roots);
       //for (var j = 1; j <= n; j += 1) {
       //}
       // `for-in` loop is used to have better performance for "a sparse array"
+      var f = roots["1"];
       for (var jj in roots) {//TODO: fix the iteration order
         if (Object.prototype.hasOwnProperty.call(roots, jj)) {
-          var j = Number.parseInt(jj.slice("~".length), 10);
+        if (jj !== "1") {
+          var j = Number.parseInt(jj, 10);
           var r = roots[jj];
-          y = y.multiply(makeRoot(r, j));
+          //y = y.multiply(makeRoot(r, j));
+          var x = makeRoot(r, j);
+          if (y !== Expression.ONE) {
+            y = new Expression.Multiplication(y, x);
+          } else {
+            y = x;
+          }
+        }
         }
       }
-      return x.compareTo(Expression.ZERO) < 0 ? y.negate() : y;
+      if (f != null) {
+        y = f.multiply(y);
+      }
+      return y;
     }
-    if (x instanceof Matrix) {
-      if (global.hit != undefined) {
-        global.hit(n === 2 ? {squareRoot: "matrix"} : (n === 3 ? {cubeRoot: "matrix"} : {nthRoot: "Matrix^(1/" + n + ")"}));
+    if (x instanceof Expression.Matrix) {
+      if (typeof hit === "function") {
+        hit(n === 2 ? {squareRoot: "matrix"} : (n === 3 ? {cubeRoot: "matrix"} : {nthRoot: "Matrix^(1/" + n + ")"}));
+      }
+      if (Expression.callback != undefined) {
+        Expression.callback(new Expression.Event("nth-root-using-diagonalization", x));
       }
       if (Expression.callback != undefined) {
         Expression.callback(new Expression.Event("diagonalize", x));
@@ -5717,11 +7320,123 @@ BigInteger.primeFactor = primeFactor;
           var SL = L.map(function (e, i, j) {
             return i === j ? e._nthRoot(n) : e;
           });
-          return new Matrix(tmp.T.multiply(SL).multiply(tmp.T_INVERSED));
+          return new Expression.Matrix(tmp.T.multiply(SL).multiply(tmp.T_INVERSED));
+        } else {
+          var rootOfJordanForm = function (J, n) {
+            var tmp = J.map(function (e, i, j) {
+              if (i > j) {
+                return Expression.ZERO;
+              }
+              if (i === j) {
+                return J.e(i, j)._nthRoot(n);
+              }
+              if (J.e(i, i + 1).equals(Expression.ZERO)) {
+                return Expression.ZERO;
+              }
+              if (i + 1 === j) {
+                var N = Expression.Integer.fromNumber(n);
+                return J.e(i, i + 1).divide(N.multiply(J.e(i, i)._nthRoot(n).pow(N.subtract(Expression.ONE))));
+              }
+              return new Expression.Symbol('aa_(' + (j - i) + ',' + j + ')');
+            });
+            for (var k = 2; k < J.cols(); k += 1) {
+              var x = tmp.pow(n);
+              tmp = tmp.map(function (e, i, j) {
+                if (i + k === j) {
+                  if (x.e(i, j).equals(Expression.ZERO)) {
+                    return Expression.ZERO;
+                  }
+                  var s = new Expression.Symbol('aa_(' + (j - i) + ',' + j + ')');
+                  var p = Polynomial.toPolynomial(x.e(i, j).getNumerator(), s);
+                  if (p.getDegree() === 0) {
+                    return x.e(i, j);
+                  }
+                  if (p.getDegree() !== 1) {
+                    throw new TypeError("!");
+                  }
+                  var y = p.getCoefficient(0).negate().divide(p.getCoefficient(1));
+                  return y;
+                }
+                return e;
+              });
+            }
+            return tmp;
+          };
+          var tmp = Expression.getFormaDeJordan(x.matrix, eigenvalues, multiplicities);
+          var JN = rootOfJordanForm(tmp.J, n);
+          //TODO: details - ?
+          return new Expression.Matrix(tmp.P.multiply(JN).multiply(tmp.P_INVERSED));
         }
       }
       //TODO: using Jordan normal form -?
     }
+    //!2019-04-22
+    if (x instanceof Exponentiation && x.a instanceof Integer && x.a.compareTo(Expression.ZERO) > 0) {
+      //if (n === 2) {//TODO:
+        if (x.b instanceof Expression.Symbol) {
+          if (x.a instanceof Expression.Integer && integerPrimeFactor(x.a).equals(x.a)) {
+            //return new SquareRoot(x);
+            return new Expression.Exponentiation(x.a, x.b.divide(Expression.Integer.fromNumber(n)));
+          }
+        } else {
+          return x.a.pow(x.b.divide(Expression.Integer.fromNumber(n)));
+        }
+      //}
+    }
+    
+    //!2019-16-06
+    if (x instanceof Exponentiation && x.a === Expression.E) {
+      return x.a.pow(x.b.divide(Expression.Integer.fromNumber(n)));
+    }
+    //!2019-17-06
+    if (x instanceof Expression.Symbol) {
+      return new Expression.Exponentiation(x, Expression.ONE.divide(Expression.Integer.fromNumber(n)));
+    }
+    if (x instanceof Exponentiation && x.a instanceof Expression.Symbol && (n % 2 !== 0 || !x.b.getNumerator().remainder(Expression.TWO).equals(Expression.ZERO))) {
+      //TODO: fix condition for n % 2 === 0
+      var b = x.b.divide(Expression.Integer.fromNumber(n));
+      return b.equals(Expression.ONE) ? x.a : new Expression.Exponentiation(x.a, b);
+    }
+
+    //!2019-06-20
+    var v = getVariable(x);
+    if (v instanceof Expression.Symbol && (n === 2 || n === 3)) {//TODO: other n's
+      var p = Polynomial.toPolynomial(x, v);
+      if (p.getDegree() === 1 && p.getCoefficient(0) instanceof Integer && !p.getCoefficient(0).equals(Expression.ZERO) && p.getCoefficient(1) instanceof Integer) {
+        //TODO:
+        var c = p.getContent();
+        if (c.isNegative()) {
+          c = c.negate();
+        }
+        if (!c.equals(Expression.ONE)) {
+          return x.divide(c)._nthRoot(n).multiply(c._nthRoot(n));
+        }
+        if (p.getCoefficient(1).compareTo(Expression.ZERO) > 0) {
+          return new Expression.Exponentiation(x, Expression.ONE.divide(Expression.Integer.fromNumber(n)));
+        } else {
+          //!TODO: fix
+          if (n % 2 !== 0) {
+            return Expression.ONE.negate()._nthRoot(n).multiply(new Expression.Exponentiation(x.negate(), Expression.ONE.divide(Expression.Integer.fromNumber(n))));
+          }
+        }
+      }
+      if (p.getDegree() > 1 && !p.getCoefficient(0).equals(Expression.ZERO)) {
+        //TODO: check
+        var N = Expression.Integer.fromNumber(p.getDegree());
+        var t = v.multiply(p.getCoefficient(p.getDegree())._nthRoot(N)).add(p.getCoefficient(0)._nthRoot(N));
+        if (x.equals(t.pow(N))) {
+          //!TODO: remove
+          if (p.getDegree() >= n && n % 2 !== 0) {
+            return t.pow(Expression.ONE).multiply(t.pow(Expression.Integer.fromNumber(p.getDegree() - n))._nthRoot(n));
+          }
+          //!
+          if (n % 2 !== 0) {
+            return new Expression.Exponentiation(t, N.divide(Expression.Integer.fromNumber(n)));
+          }
+        }
+      }
+    }
+
     throw new RangeError("NotSupportedError");
   };
 
@@ -5730,6 +7445,11 @@ BigInteger.primeFactor = primeFactor;
   }
 
   SquareRoot.prototype = Object.create(NthRoot.prototype);
+  //!
+  SquareRoot.prototype.divideInteger = function (x) {
+    //TODO: check
+    return x.multiply(this).divide(this.a);
+  };
 
   Expression.prototype.squareRoot = function () {
     return this._nthRoot(2);
@@ -5752,14 +7472,14 @@ BigInteger.primeFactor = primeFactor;
 
   Expression.prototype.rank = function () {
     var x = this;
-    if (!(x instanceof Matrix)) {
+    if (!(x instanceof Expression.Matrix)) {
       throw new RangeError("NotSupportedError");//?
     }
     //!
     if (Expression.callback != undefined) {
       Expression.callback(new Expression.Event("rank", x));
     }
-    return Integer.parseInteger(x.matrix.rank().toString());
+    return Integer.fromNumber(x.matrix.rank());
   };
   Expression.Determinant = function (matrix) {
     Expression.Function.call(this, "determinant", matrix);
@@ -5767,7 +7487,7 @@ BigInteger.primeFactor = primeFactor;
   Expression.Determinant.prototype = Object.create(Expression.Function.prototype);
   Expression.prototype.determinant = function () {
     var x = this;
-    if (!(x instanceof Matrix)) {
+    if (!(x instanceof Expression.Matrix)) {
       throw new RangeError("NotSupportedError");//?
     }
     //!
@@ -5776,16 +7496,32 @@ BigInteger.primeFactor = primeFactor;
     }
     return x.matrix.determinant();
   };
+  Expression.RowReduce = function (matrix) {
+    Expression.Function.call(this, "row-reduce", matrix);
+  };
+  Expression.RowReduce.prototype = Object.create(Expression.Function.prototype);
+  Expression.prototype.rowReduce = function () {
+    var x = this;
+    if (!(x instanceof Expression.Matrix)) {
+      throw new RangeError("NotSupportedError");//?
+    }
+    //!
+    if (Expression.callback != undefined) {
+      Expression.callback(new Expression.Event("row-reduce".type, x));
+    }
+    //TODO: Matrix.GaussMontante
+    return new Expression.Matrix(x.matrix.toRowEchelon(Matrix.GaussJordan, "", null).matrix);
+  };
   Expression.Transpose = function (matrix) {
     Expression.Function.call(this, "transpose", matrix);
   };
   Expression.Transpose.prototype = Object.create(Expression.Function.prototype);
   Expression.prototype.transpose = function () {
     var x = this;
-    if (!(x instanceof Matrix)) {
+    if (!(x instanceof Expression.Matrix)) {
       throw new RangeError("NotSupportedError");//?
     }
-    return new Matrix(x.matrix.transpose());
+    return new Expression.Matrix(x.matrix.transpose());
   };
   Expression.Adjugate = function (matrix) {
     Expression.Function.call(this, "adjugate", matrix);
@@ -5793,22 +7529,22 @@ BigInteger.primeFactor = primeFactor;
   Expression.Adjugate.prototype = Object.create(Expression.Function.prototype);
   Expression.prototype.adjugate = function () {
     var x = this;
-    if (!(x instanceof Matrix)) {
+    if (!(x instanceof Expression.Matrix)) {
       throw new RangeError("NotSupportedError");//?
     }
     if (Expression.callback != undefined) {
       Expression.callback(new Expression.Event("adjugate", x));
     }
     if (x.matrix.rows() === 1 && x.matrix.cols() === 1) {
-      return new Matrix(self.Matrix.I(1));
+      return new Expression.Matrix(Matrix.I(1));
     }
     //TODO: optimize
     var C = x.matrix.map(function (element, i, j, matrix) {
       return ((i + j) - 2 * Math.floor((i + j) / 2) === 1 ? Expression.ONE.negate() : Expression.ONE).multiply(matrix.minorMatrix(i, j).determinant());
     });
-    var CT = new Matrix(C.transpose());
+    var CT = new Expression.Matrix(C.transpose());
     return CT;
-    //return new Matrix(a.matrix.inverse().scale(a.matrix.determinant()));
+    //return new Expression.Matrix(a.matrix.inverse().scale(a.matrix.determinant()));
   };
 
   Expression.NoAnswerExpression = function (matrix, name, second) {
@@ -5819,7 +7555,7 @@ BigInteger.primeFactor = primeFactor;
   //TODO: remove secondArgument (?)
   Expression.prototype.transformNoAnswerExpression = function (name, second) {
     second = second == undefined ? undefined : second;
-    if (!(this instanceof Matrix)) {
+    if (!(this instanceof Expression.Matrix)) {
       throw new RangeError("NotSupportedError");//?
     }
     if (name === "solve") {
@@ -5855,10 +7591,10 @@ BigInteger.primeFactor = primeFactor;
     return ".^";
   };
   Expression.prototype.elementWisePower = function (e) {
-    if (!(this instanceof Matrix)) {
+    if (!(this instanceof Expression.Matrix)) {
       throw new RangeError("NotSupportedError");//?
     }
-    return new Matrix(this.matrix.map(function (element, i, j) {
+    return new Expression.Matrix(this.matrix.map(function (element, i, j) {
       return element.pow(e);
     }));
   };
@@ -5880,8 +7616,8 @@ BigInteger.primeFactor = primeFactor;
     return false;
   };
 
-  var primeFactor = function (n) {
-    return new Integer(BigInteger.primeFactor(n.value));
+  var integerPrimeFactor = function (n) {
+    return new Integer(primeFactor(n.value));
   };
 
   //?
@@ -5889,35 +7625,47 @@ BigInteger.primeFactor = primeFactor;
     if (e instanceof Division) {
       throw new RangeError();
     }
-    if (e instanceof Matrix) {
+    if (e instanceof Expression.Matrix) {
       throw new RangeError();
     }
-    if (e instanceof Symbol) {
+    if (e instanceof Expression.Symbol) {
       return e;
     }
     if (e instanceof Integer) {
       var x = e;
       var i = x.compareTo(Expression.ZERO) < 0 ? x.negate() : x;
       if (i.compareTo(Expression.ONE) > 0) {
-        return primeFactor(i);
+        return integerPrimeFactor(i);
       }
       return null;
     }
     if (e instanceof Expression.Complex) {
-      //TODO:
+      //TODO: (!)
+      var f = e.primeFactor();
+      if (!f.equals(e) && e.divide(f) instanceof Expression.Integer) {
+        f = f.multiply(Expression.I);
+      }
+      return f;
+      /*
       var g = integerGCD(e.real, e.imaginary);
       var t = simpleDivisor(g);
       if (t != null) {
         return t;
       }
-      if (global.hit != undefined) {
-        global.hit({everySimpleDivisor: e.toString()});
+      if (typeof hit === "function") {
+        hit({everySimpleDivisor: e.toString()});
       }
       return e;
+      */
     }
     var v = getVariable(e);
     if (v != undefined) {
-      var np = Polynom.toPolynomial(e, v);
+      var r = getReplacement(e, v);
+      if (!r.equals(v)) {
+        return substitute(simpleDivisor(substitute(e, v, r, inverseReplacement(r, v))), v, inverseReplacement(r, v), r);
+      }
+
+      var np = Polynomial.toPolynomial(e, v);
 
       var content = np.getContent();
       var t = simpleDivisor(content);
@@ -5931,12 +7679,17 @@ BigInteger.primeFactor = primeFactor;
       }
 
       if (np.getDegree() >= 2) {
-        var t = null;
-        np = np.doRationalRootTest(function (sp, q) {
-          t = v.multiply(q).subtract(sp);
-          return false;
-        });
-        if (np == undefined) {
+        var root = np.doRationalRootTest();
+        if (root == null) {
+          //TODO: TEST COVERAGE (!)
+          var t = np._getFactorByKroneckersMethod();
+          if (t != null) {
+            //TODO: write a test case
+            return simpleDivisor(t.calcAt(v));
+          }
+        }
+        if (root != null) {
+          var t = v.multiply(root.getDenominator()).subtract(root.getNumerator());
           return t;
         }
       }
@@ -5949,41 +7702,30 @@ BigInteger.primeFactor = primeFactor;
     }
     throw new RangeError();//?
   };
-
-  Expression.everySimpleDivisor = function (e, callback) {//TODO: remove
-    while (!e.equals(Expression.ONE) && !e.equals(Expression.ONE.negate())) {
-      var t = simpleDivisor(e);
-      if (!callback(t)) {
-        return false;
-      }
-      e = e.divide(t);
-    }
-    return true;
-  };
+  Expression.simpleDivisor = simpleDivisor;
 
   Expression.everyDivisor = function (e, callback) {
-    var divisors = [];
     if (!callback(Expression.ONE)) {
       return false;
     }
-    return Expression.everySimpleDivisor(e, function (d) {
-      var rec = function (start, n, s) {
-        if (n >= 0) {
-          var x = divisors[n];
-          var d = x.d;
-          var e = x.e;
-          for (var i = start; i <= e; i += 1) {
-            if (!rec(0, n - 1, s.multiply(Expression.pow(d, i)))) {
-              return false;
-            }
-          }
-        } else {
-          if (!callback(s)) {
+    var divisors = [];
+    var rec = function (start, n, s) {
+      if (n >= 0) {
+        var x = divisors[n];
+        for (var i = start; i <= x.e; i += 1) {
+          if (!rec(0, n - 1, s.multiply(Expression.pow(x.d, i)))) {
             return false;
           }
         }
-        return true;
-      };
+      } else {
+        if (!callback(s)) {
+          return false;
+        }
+      }
+      return true;
+    };
+    while (!e.equals(Expression.ONE) && !e.equals(Expression.ONE.negate())) {
+      var d = simpleDivisor(e);
       if (divisors.length === 0 || !divisors[divisors.length - 1].d.equals(d)) {
         divisors.push({
           d: d,
@@ -5991,13 +7733,15 @@ BigInteger.primeFactor = primeFactor;
         });
       }
       divisors[divisors.length - 1].e += 1;
-      return rec(divisors[divisors.length - 1].e, divisors.length - 1, Expression.ONE);
-    });
+      if (!rec(divisors[divisors.length - 1].e, divisors.length - 1, Expression.ONE)) {
+        return false;
+      }
+      e = e.divide(d);
+    }
+    return true;
   };
 
   Expression.Integer = Integer;
-  Expression.Symbol = Symbol;
-  Expression.Matrix = Matrix;
   Expression.NthRoot = NthRoot;
   Expression.SquareRoot = SquareRoot;
   Expression.CubeRoot = CubeRoot;
@@ -6008,11 +7752,13 @@ BigInteger.primeFactor = primeFactor;
   Expression.Multiplication = Multiplication;
   Expression.Addition = Addition;
   Expression.Division = Division;
+  //TODO: remove
   Expression.pow = function (x, count) {
-    return pow(x, count, Expression.ONE);
+    return x._pow(count);
   };
-
-  global.Expression = Expression;
+  Expression.prototype._pow = function (count) {
+    return pow(this, count, Expression.ONE);
+  };
 
   // --- 
 
@@ -6029,30 +7775,31 @@ BigInteger.primeFactor = primeFactor;
     return "=";
   };
 
-  var AdditionIterator = function (e) {
+  function AdditionIterator(e) {
     if (e == undefined) {
-      throw new Error();
+      throw new TypeError();
     }
+    this.value = undefined;
     this.e = e;
-  };
-  AdditionIterator.prototype.value = function () {
-    return this.e instanceof Addition ? this.e.b : this.e;
-  };
+  }
+  AdditionIterator.prototype = Object.create(Iterator.prototype);
   AdditionIterator.prototype.next = function () {
-    return this.e instanceof Addition ? new AdditionIterator(this.e.a) : undefined;
+    this.value = this.e instanceof Addition ? this.e.b : this.e;
+    this.e = this.e instanceof Addition ? this.e.a : undefined;
+    return this;
   };
 
-  var MultiplicationIterator = function (e) {
+  function MultiplicationIterator(e) {
     if (e == undefined) {
-      throw new Error();
+      throw new TypeError();
     }
     this.e = e;
-  };
-  MultiplicationIterator.prototype.value = function () {
-    return this.e instanceof Multiplication ? this.e.b : this.e;
-  };
+  }
+  MultiplicationIterator.prototype = Object.create(Iterator.prototype);
   MultiplicationIterator.prototype.next = function () {
-    return this.e instanceof Multiplication ? new MultiplicationIterator(this.e.a) : undefined;
+    this.value = this.e instanceof Multiplication ? this.e.b : this.e;
+    this.e = this.e instanceof Multiplication ? this.e.a : null;
+    return this;
   };
 
   Expression.prototype.summands = function () {
@@ -6067,15 +7814,14 @@ BigInteger.primeFactor = primeFactor;
     var scalar = undefined;
     var l = undefined;
     var r = undefined;
-    for (var additions = e.summands(); additions != undefined; additions = additions.next()) {
-      var summand = additions.value();
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
       var state = 0;
-      for (var multiplications = summand.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-        var factor = multiplications.value();
-        if (!(factor instanceof Integer) && !(factor instanceof Symbol) && !(factor instanceof Matrix)) {
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+        var factor = y;
+        if (!(factor instanceof Integer) && !(factor instanceof Expression.Symbol) && !(factor instanceof Expression.Matrix)) {
           throw new RangeError("NotSupportedError");
         }
-        var s = factor instanceof Symbol ? factor.toString() : "";
+        var s = factor instanceof Expression.Symbol ? factor.toString() : "";
         if (s === "X") {
           state = 1;
         } else {
@@ -6119,22 +7865,30 @@ BigInteger.primeFactor = primeFactor;
 
   //?
   var getExpressionWithX = function (e) {
+    if (e instanceof Division) {
+      if (e.getDenominator() instanceof Expression.Integer) {
+        e = e.getNumerator();//!
+      } else {
+        throw new TypeError();
+      }
+    }
+
     var withX = undefined;
     var withoutX = undefined;
-    for (var additions = e.summands(); additions != undefined; additions = additions.next()) {
-      var summand = additions.value();
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
+      var summand = x;
       var hasX = false;
-      for (var multiplications = summand.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-        var factor = multiplications.value();
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+        var factor = y;
         var factorBase = getBase(factor);
-        if (!(factorBase instanceof Integer) && !(factorBase instanceof Symbol)) {
-          if (!(factorBase instanceof Matrix)) {//?
+        if (!(factorBase instanceof Integer) && !(factorBase instanceof Expression.Symbol)) {
+          if (!(factorBase instanceof Expression.Matrix)) {//?
           if (!(factorBase instanceof NthRoot)) {//?TODO: remove - ?
             throw new RangeError("NotSupportedError");
           }
           }
         }
-        if (factorBase instanceof Symbol) {
+        if (factorBase instanceof Expression.Symbol) {
           var s = factorBase.toString();
           if (s === "X") {
             if (hasX) {
@@ -6170,54 +7924,70 @@ BigInteger.primeFactor = primeFactor;
       return isConstant(e.a) && isConstant(e.b);
     } else if (e instanceof Expression.Addition) {
       return isConstant(e.a) && isConstant(e.b);
+    } else if (e instanceof Expression.Division) {
+      return isConstant(e.a) && isConstant(e.b);
     }
     return false;
   };
   
   Expression.isConstant = isConstant;
 
-  Expression.isSingleVariablePolynomial = function (e) {
-    return Expression.getSingleVariablePolynomial(e) != undefined;
-  };
-
-  Expression.getSingleVariablePolynomial = function (e, allowMultivariate) {
-    allowMultivariate = allowMultivariate == undefined ? false : allowMultivariate;
+  Expression.getMultivariatePolynomial = function (e) {
     if (e instanceof Expression.Division) {
       return undefined;
     }
     //var v = Expression.getVariable(e);
     // To avoid square roots / nth roots:
-    var v = getVariableInternal(getLastMultiplicationOperand(getFirstAdditionOperand(e))).value().v;
+    var v = getVariableInternal(getLastMultiplicationOperand(getFirstAdditionOperand(e))).next().value.v;
     if (v instanceof NthRoot || v instanceof Integer || v instanceof Expression.Complex) {
       v = undefined;
     }
     if (v == undefined) {
-      //throw new Error("undefined");
+      //throw new TypeError("undefined");
       return undefined;
     }
-    var p = Polynom.toPolynomial(e, v);
+    //?
+    if (v instanceof Expression.Addition) {
+      v = getVariableInternal(getLastMultiplicationOperand(getFirstAdditionOperand(v))).next().value.v;
+    }
+    //?
+    
+    //TODO:
+    var r = getReplacement(e, v);
+    if (!r.equals(v)) {
+      e = substitute(e, v, r, inverseReplacement(r, v));
+      if (e instanceof Expression.Division && e.b instanceof Expression.Integer) {
+        e = e.a;//!
+      }
+    }
+
+    var p = Polynomial.toPolynomial(e, v);
     //TODO: iteration by sparse coefficients
     for (var i = 0; i <= p.getDegree(); i += 1) {
       var c = p.getCoefficient(i);
       if (!isConstant(c)) {
-        if (!allowMultivariate) {
-          return undefined;
-        }
         var pc = Expression.getMultivariatePolynomial(c);
         if (pc == undefined) {
           return undefined;
         }
       }
     }
-    return {p: p, v: v};
+    return {p: p, v: inverseReplacement(r, v)};
   };
-
-  //TODO: remove - ?
-  Expression.getMultivariatePolynomial = function (e) {
-    return Expression.getSingleVariablePolynomial(e, true);
-  };
-  Expression.isMultivariatePolynomial = function (e) {
-    return Expression.getMultivariatePolynomial(e) != undefined;
+  Expression.isSingleVariablePolynomial = function (e) {
+    var tmp = Expression.getMultivariatePolynomial(e);
+    if (tmp == null) {
+      return false;
+    }
+    var p = tmp.p;
+    //TODO: iteration by sparse coefficients
+    for (var i = 0; i <= p.getDegree(); i += 1) {
+      var c = p.getCoefficient(i);
+      if (!isConstant(c)) {
+        return false;
+      }
+    }
+    return true;
   };
 
   // TODO: NotSupportedError
@@ -6229,18 +7999,18 @@ BigInteger.primeFactor = primeFactor;
     if (withX == undefined) {
       if (e.getDenominator() instanceof Integer && !(e.getNumerator() instanceof Expression.Matrix)) {
         //TODO: tests
-        var tmp = Expression.getSingleVariablePolynomial(e.getNumerator());
+        var tmp = Expression.getMultivariatePolynomial(e.getNumerator());
         if (tmp != undefined) {
           var p = tmp.p;
           var v = tmp.v;
-          var m = self.Matrix.Zero(1, p.getDegree() + 1).map(function (e, i, j) {
+          var m = Matrix.Zero(1, p.getDegree() + 1).map(function (e, i, j) {
             return p.getCoefficient(p.getDegree() - j);
           });
-          return new Expression.NoAnswerExpression(new Matrix(m), "polynomial-roots", {variable: v});
+          return new Expression.NoAnswerExpression(new Expression.Matrix(m), "polynomial-roots", {variable: v});
         }
       }
       if (e instanceof Expression.Matrix && Expression.SystemOfEquations != null) {
-        if (this instanceof Expression.Matrix && b instanceof Expression.Matrix) {
+        if (this instanceof Expression.Matrix && (b instanceof Expression.Matrix || b instanceof Expression.IdentityMatrix)) {
           return Expression.SystemOfEquations.from(this, b);
         }
         //TODO: other things - ?
@@ -6257,16 +8027,17 @@ BigInteger.primeFactor = primeFactor;
     var right = withoutX;
 
     var isToTheLeft = false;
-    for (var multiplications = withX.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-      var factor = multiplications.value();
+    var x = withX;
+    for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+      var factor = y;
       var factorBase = getBase(factor);
-      //if (!(factorBase instanceof Integer) && !(factorBase instanceof Symbol)) {
-      //  if (!(factorBase instanceof Matrix)) {//?
+      //if (!(factorBase instanceof Integer) && !(factorBase instanceof Expression.Symbol)) {
+      //  if (!(factorBase instanceof Expression.Matrix)) {//?
       //    throw new RangeError("NotSupportedError");
       //  }
       //}
       var isX = false;
-      if (factorBase instanceof Symbol) {
+      if (factorBase instanceof Expression.Symbol) {
         var s = factorBase.toString();
         if (s === "X") {
           isX = true;
@@ -6314,8 +8085,10 @@ BigInteger.primeFactor = primeFactor;
   };
 
   Expression.PI = new Expression.Symbol("\u03C0"); // PI
-  Expression.E = new Expression.Symbol("e"); // EulerNumber
-  Expression.I = new Expression.Symbol("i"); // ImaginaryUnit
+  Expression.E = new Expression.Symbol("\u2147"); // EulerNumber
+  Expression.I = new Expression.Symbol("\u2148"); // ImaginaryUnit
+  
+  Expression.CIRCLE = new Expression.Symbol("○");
 
   Expression.prototype.addPosition = function () {
     return this;
@@ -6333,6 +8106,18 @@ BigInteger.primeFactor = primeFactor;
     Expression.Exponentiation.call(this, x, y);
   };
   Expression.ExponentiationOfMinusOne.prototype = Object.create(Expression.Exponentiation.prototype);
+  Expression.ExponentiationOfMinusOne.prototype.divideExpression = function (x) {
+    return x.multiply(this);
+  };
+
+  Expression.ExponentiationOfImaginaryUnit = function (x, y) {
+    Expression.Exponentiation.call(this, x, y);
+  };
+  Expression.ExponentiationOfImaginaryUnit.prototype = Object.create(Expression.Exponentiation.prototype);
+  Expression.ExponentiationOfImaginaryUnit.prototype.divideExpression = function (x) {
+    //return x.multiply(this);
+    return x.multiply(this.multiply(this).multiply(this));
+  };
 
   //!  
   Expression.Division.prototype.negate = function () {
@@ -6351,7 +8136,7 @@ BigInteger.primeFactor = primeFactor;
     return x.polynomial.equals(this.polynomial);
   };
   Expression.prototype.equalsPolynomial = function (x) {
-    return (x.polynomial.equals(Polynom.ZERO) && this.equals(Expression.ZERO)) || (x.polynomial.getDegree() === 0 && this.equals(x.polynomial.getCoefficient(0)));
+    return (x.polynomial.equals(Polynomial.ZERO) && this.equals(Expression.ZERO)) || (x.polynomial.getDegree() === 0 && this.equals(x.polynomial.getCoefficient(0)));
   };
   Expression.Polynomial.prototype.multiply = function (p) {
     return p.multiplyPolynomial(this);
@@ -6384,6 +8169,7 @@ BigInteger.primeFactor = primeFactor;
       a = b;
       b = t;
     }
+    //TODO: 
     var gcd = a;
     if (y.polynomial.equals(gcd)) {
       return new Expression.Polynomial(x.polynomial.divideAndRemainder(gcd).quotient);
@@ -6413,142 +8199,318 @@ BigInteger.primeFactor = primeFactor;
     return (count < 2 ? (this.polynomial.getLeadingCoefficient().equals(Expression.ONE) ? new Expression.Symbol("x") : new Expression.Multiplication(Expression.ONE, Expression.ONE)) : new Expression.Addition(Expression.ONE, Expression.ONE)).getPrecedence();
   };
 
-  Expression.sum = function (multiplicities) {
-    var countWithDuplicates = 0;
-    for (var i = 0; i < multiplicities.length; i += 1) {
-      countWithDuplicates += multiplicities[i];
+  Expression.sum = function (array) {
+    var count = 0;
+    for (var i = 0; i < array.length; i += 1) {
+      count += array[i];
     }
-    return countWithDuplicates;
+    return count;
   };
 
-}(this));
+Expression.Multiplication.prototype.compare4Multiplication = function (y) {
+  var x = this;
+  if (y instanceof Addition) {//TODO: fix
+    return 0 - y.compare4Multiplication(x);
+  }
+  var i = x.factors();
+  var j = y.factors();
+  var a = i.next().value;
+  var b = j.next().value;
+  while (a != null && b != null) {
+    var c = a.compare4Multiplication(b);
+    if (c !== 0) {
+      return c;
+    }
+    a = i.next().value;
+    b = j.next().value;
+  }
+  return a != null ? +1 : (b != null ? -1 : 0);
+};
 
-/*global Expression, BigInteger, self*/
+Expression.Multiplication.compare4Addition = function (x, y) {
+  var i = x.factors();
+  var j = y.factors();
+  var a = i.next().value;
+  var b = j.next().value;
+  while (a != null && b != null) {
+    var c = a.compare4Addition(b);
+    if (c !== 0) {
+      return c;
+    }
+    a = i.next().value;
+    b = j.next().value;
+  }
+  return a != null ? +1 : (b != null ? -1 : 0);
+};
 
-(function (global) {
+
+// cos(2 * x) * cos(x)
+Expression.Multiplication.prototype.compare4MultiplicationSymbol = function (x) {
+  return 0 - this.compare4Multiplication(x);
+};
+
+Expression.Function.prototype.compare4Addition = function (y) {
+  if (y instanceof Expression.Function) {
+    return this.name < y.name ? -1 : (y.name < this.name ? +1 : this.a.compare4Addition(y.a));
+  }
+  return +1;
+};
+
+Expression.prototype.compare4AdditionSymbol = function (x) {
+  var y = this;
+  if (y instanceof Expression.Function) {
+    return -1;
+  }
+  return Expression.prototype.compare4Addition.call(x, y);
+};
+
+Expression.Symbol.prototype.compare4Addition = function (y) {
+  return y.compare4AdditionSymbol(this);
+};
+
+Expression.Function.prototype.compare4Multiplication = function (y) {
+  if (y instanceof Expression.NthRoot) {
+    return +1;
+  }
+  if (y instanceof Expression.Function) {
+    return this.name < y.name ? -1 : (y.name < this.name ? +1 : this.a.compare4Multiplication(y.a));
+  }
+  if (y instanceof Expression.MatrixSymbol) {
+    return -1;
+  }
+  return +1;
+};
+
+Expression.Function.prototype.compare4MultiplicationInteger = function (x) {
+  return 0 - this.compare4Multiplication(x);
+};
+
+Expression.Function.prototype.compare4MultiplicationSymbol = function (x) {
+  return -1;//?
+};
+
+Expression.Function.prototype.compare4MultiplicationNthRoot = function (x) {
+  return 0 - this.compare4Multiplication(x);
+};
+
+Expression.Function.prototype.pow = function (y) {
+  if (this instanceof Expression.NthRoot) {
+    return Expression.prototype.pow.call(this, y);
+  }
+  if (y instanceof Expression.Integer) {
+    if (y.compareTo(Expression.ONE) > 0) {
+      return new Expression.Exponentiation(this, y);
+    }
+    return Expression.prototype.pow.call(this, y);
+  }
+  throw new RangeError("NotSupportedError");
+};
+
+function ExpressionWithCondition(e, n, condition) {
+  this.e = e;
+  this.n = n;
+  this.condition = condition;
+}
+ExpressionWithCondition.prototype = Object.create(Expression.prototype);
+ExpressionWithCondition.prototype.toString = function () {
+  return this.e.toString() + '; ' + this.n.toString() + ' > ' + this.condition;
+};
+ExpressionWithCondition.prototype.toMathML = function (options) {
+  return this.e.toMathML(options) + '<mtext>; </mtext>' + this.n.toMathML(options) + '<mo>&gt;</mo><mn>' + this.condition + '</mn>';
+};
+
+  self.Expression = Expression;
+
+  //TODO: ?
+  Addition.prototype.compare4MultiplicationNthRoot = function (x) {
+    return +1;
+  };
+
+})();
+(function () {
 "use strict";
 
-BigInteger.ZERO = BigInteger.fromNumber(0);
-BigInteger.ONE = BigInteger.fromNumber(1);
-BigInteger.TWO = BigInteger.fromNumber(2);
-BigInteger.TEN = BigInteger.fromNumber(10);
 
-function nthRoot(A, n) {
-  var x = BigInteger.nthRoot(A, n);
-  return {x0: x, x1: BigInteger.compareTo(A, BigInteger.pow(x, n)) === 0 ? x : BigInteger.add(x, BigInteger.ONE)};
-}
+
 
 //TODO: ???
 
-function FP() {
+// https://en.wikipedia.org/wiki/Fixed-point_arithmetic
+function FixedPointContext(scalingCoefficient) {
+  this.scalingCoefficient = scalingCoefficient;
 }
-FP.Context = function (roundingMode, precision) {
-  this.roundingMode = roundingMode;
-  this.precision = precision;
-  this.scalingCoefficient = BigInteger.pow(BigInteger.TEN, this.precision);
+FixedPointContext.prototype.sign = function (x) { // returns -1 or +1
+  return BigInteger.lessThan(x, BigInteger.BigInt(0)) ? -1 : +1;
 };
-FP.Context.prototype.sign = function (x) { // returns -1 or +1
-  return BigInteger.compareTo(x, BigInteger.ZERO) < 0 ? -1 : +1;
-};
-FP.Context.prototype.round = function (x) { // returns BigInteger
+FixedPointContext.prototype.round = function (x) { // returns BigInteger
   // rounding to closest, half - away from zero
-  var roundDivision = function (a, b) {
-    var q = BigInteger.divide(a, b);
-    var r = BigInteger.remainder(a, b);
-    var r2 = BigInteger.add(r, r);
-    return BigInteger.compareTo(BigInteger.negate(r2), b) >= 0 ? BigInteger.subtract(q, BigInteger.ONE) : (BigInteger.compareTo(r2, b) >= 0 ? BigInteger.add(q, BigInteger.ONE) : q);
-  };
-  return roundDivision(x, this.scalingCoefficient);
+  var y = this.scalingCoefficient;
+  // division of x by y with rounding
+  var q = BigInteger.divide(x, y);
+  var r = BigInteger.subtract(x, BigInteger.multiply(q, y));
+  var r2 = BigInteger.add(r, r);
+  return !BigInteger.lessThan(BigInteger.unaryMinus(r2), y) ? BigInteger.subtract(q, BigInteger.BigInt(1)) : (!BigInteger.lessThan(r2, y) ? BigInteger.add(q, BigInteger.BigInt(1)) : q);
 };
-FP.Context.prototype.fromInteger = function (n) {
-  return BigInteger.multiply(n, this.scalingCoefficient);
+FixedPointContext.prototype.fromInteger = function (n) {
+  return Interval.degenerate(BigInteger.multiply(n, this.scalingCoefficient));
 };
-FP.Context.prototype.compareTo = function (x, y) {
-  return BigInteger.compareTo(x, y);
+FixedPointContext.prototype.compareTo = function (x, y) {
+  return BigInteger.lessThan(x, y) ? -1 : (BigInteger.lessThan(y, x) ? +1 : 0);
 };
-FP.Context.prototype.negate = function (x) {
-  return BigInteger.negate(x);
+FixedPointContext.prototype.negate = function (x) {
+  return Interval.degenerate(BigInteger.unaryMinus(x));
 };
-FP.Context.prototype.add = function (x, y) {
-  return BigInteger.add(x, y);
+FixedPointContext.prototype.add = function (x, y) {
+  return Interval.degenerate(BigInteger.add(x, y));
 };
-FP.Context.prototype.subtract = function (x, y) {
+FixedPointContext.prototype.subtract = function (x, y) {
   return BigInteger.subtract(x, y);
 };
-FP.Context.prototype._divide = function (x, y) {
+FixedPointContext.prototype._divide = function (x, y) {
   var q = BigInteger.divide(x, y);
-  var r = BigInteger.remainder(x, y);
-  if (this.roundingMode === "FLOOR") {
-    return BigInteger.compareTo(r, BigInteger.ZERO) < 0 ? BigInteger.subtract(q, BigInteger.ONE) : q;
-  }
-  if (this.roundingMode === "CEIL") {
-    return BigInteger.compareTo(r, BigInteger.ZERO) > 0 ? BigInteger.add(q, BigInteger.ONE) : q;
-  }
-  throw new RangeError();
+  var r = BigInteger.subtract(x, BigInteger.multiply(q, y));
+  var floor = BigInteger.lessThan(r, BigInteger.BigInt(0)) ? BigInteger.subtract(q, BigInteger.BigInt(1)) : q;
+  var ceil = BigInteger.lessThan(BigInteger.BigInt(0), r) ? BigInteger.add(q, BigInteger.BigInt(1)) : q;
+  return new Interval(floor, ceil);
 };
-FP.Context.prototype.multiply = function (x, y) {
+FixedPointContext.prototype.multiply = function (x, y) {
   return this._divide(BigInteger.multiply(x, y), this.scalingCoefficient);
 };
-FP.Context.prototype.divide = function (x, y) {
+FixedPointContext.prototype.divide = function (x, y) {
   return this._divide(BigInteger.multiply(x, this.scalingCoefficient), y);
 };
-FP.Context.prototype.min = function (x, y) {
+FixedPointContext.prototype.min = function (x, y) {
   return this.compareTo(x, y) > 0 ? y : x;
 };
-FP.Context.prototype.max = function (x, y) {
+FixedPointContext.prototype.max = function (x, y) {
   return this.compareTo(x, y) < 0 ? y : x;
 };
 
+
+// https://en.wikipedia.org/wiki/Interval_arithmetic
 function Interval(a, b) {
   this.a = a;
   this.b = b;
 }
+Interval.degenerate = function (a) {
+  return new Interval(a, a);
+};
+
 Interval.Context = function (precision) {
-  this.down = new FP.Context("FLOOR", precision);
-  this.up = new FP.Context("CEIL", precision);
+  this.scalingCoefficient = BigInteger.exponentiate(BigInteger.BigInt(10), BigInteger.BigInt(precision));
   this.precision = precision;
-  this.zero = this.down.fromInteger(BigInteger.ZERO);
+  this.c = new FixedPointContext(this.scalingCoefficient);
 };
 Interval.Context.prototype.negate = function (x) {
-  return new Interval(this.down.negate(x.b), this.up.negate(x.a));
+  if (this.c.compareTo(x.a, x.b) === 0) {
+    return this.c.negate(x.a);
+  }
+  return new Interval(this.c.negate(x.b).a, this.c.negate(x.a).b);
 };
 Interval.Context.prototype.add = function (x, y) {
-  return new Interval(this.down.add(x.a, y.a), this.up.add(x.b, y.b));
+  if (this.c.compareTo(x.a, x.b) === 0 && this.c.compareTo(y.a, y.b) === 0) {
+    return this.c.add(x.a, y.a);
+  }
+  return new Interval(this.c.add(x.a, y.a).a, this.c.add(x.b, y.b).b);
 };
 Interval.Context.prototype.subtract = function (x, y) {
   return this.add(x, this.negate(y));
 };
 Interval.Context.prototype.multiply = function (x, y) {
-  return new Interval(this.down.min(this.down.min(this.down.multiply(x.a, y.a), this.down.multiply(x.a, y.b)), this.down.min(this.down.multiply(x.b, y.a), this.down.multiply(x.b, y.b))),
-                      this.up.max(this.up.max(this.up.multiply(x.a, y.a), this.up.multiply(x.a, y.b)), this.up.max(this.up.multiply(x.b, y.a), this.up.multiply(x.b, y.b))));
+  if (this.c.compareTo(x.a, x.b) === 0 && this.c.compareTo(y.a, y.b) === 0) {
+    return this.c.multiply(x.a, y.a);
+  }
+  var a = this.c.multiply(x.a, y.a);
+  var b = this.c.multiply(x.a, y.b);
+  var c = this.c.multiply(x.b, y.a);
+  var d = this.c.multiply(x.b, y.b);
+  return new Interval(this.c.min(this.c.min(a.a, b.a),
+                                 this.c.min(c.a, d.a)),
+                      this.c.max(this.c.max(a.b, b.b),
+                                 this.c.max(c.b, d.b)));
 };
 Interval.Context.prototype.divide = function (x, y) {
-  if (this.down.compareTo(y.a, this.zero) <= 0 && this.down.compareTo(y.b, this.zero) >= 0) {
+  var zero = this.c.fromInteger(BigInteger.BigInt(0));
+  if (this.c.compareTo(y.a, zero.b) <= 0 && this.c.compareTo(y.b, zero.a) >= 0) {
     //throw new RangeError();
     return "CANNOT_DIVIDE";//TODO: FIX
   }
-  return new Interval(this.down.min(this.down.min(this.down.divide(x.a, y.a), this.down.divide(x.a, y.b)), this.down.min(this.down.divide(x.b, y.a), this.down.divide(x.b, y.b))),
-                      this.up.max(this.up.max(this.up.divide(x.a, y.a), this.up.divide(x.a, y.b)), this.up.max(this.up.divide(x.b, y.a), this.up.divide(x.b, y.b))));
+  if (this.c.compareTo(x.a, x.b) === 0 && this.c.compareTo(y.a, y.b) === 0) {
+    return this.c.divide(x.a, y.a);
+  }
+  var a = this.c.divide(x.a, y.a);
+  var b = this.c.divide(x.a, y.b);
+  var c = this.c.divide(x.b, y.a);
+  var d = this.c.divide(x.b, y.b);
+  return new Interval(this.c.min(this.c.min(a.a, b.a),
+                                 this.c.min(c.a, d.a)),
+                      this.c.max(this.c.max(a.b, b.b),
+                                 this.c.max(c.b, d.b)));
 };
 Interval.Context.prototype.nthRoot = function (A, n) {
-  var c = BigInteger.pow(BigInteger.TEN, this.precision);
-  var sA = BigInteger.multiply(A, BigInteger.pow(c, n));
-  var tmp = nthRoot(sA, n);
-  var a = this.down.divide(this.down.fromInteger(tmp.x0), this.down.fromInteger(c));
-  var b = this.up.divide(this.up.fromInteger(tmp.x1), this.up.fromInteger(c));
+  var c = this.scalingCoefficient;
+  var sA = BigInteger.multiply(A, BigInteger.exponentiate(c, BigInteger.BigInt(n)));
+
+  var x0 = nthRoot(sA, BigInteger.BigInt(n));
+  var x1 = BigInteger.lessThan(BigInteger.exponentiate(x0, BigInteger.BigInt(n)), sA) ? BigInteger.add(x0, BigInteger.BigInt(1)) : x0;
+
+  var t = this.c.fromInteger(c);
+  var a = this.c.divide(this.c.fromInteger(x0).a, t.b).a;
+  var b = this.c.divide(this.c.fromInteger(x1).b, t.a).b;
   return new Interval(a, b);
 };
+Interval.Context.prototype.exp = function (x) {
+
+  function expp(a, b, scaling) {
+    // a > 0, b > 0, scaling > 0
+    var y = BigInteger.BigInt(1);
+    var t = BigInteger.BigInt(1);
+    var u = BigInteger.BigInt(1);
+    var k = BigInteger.BigInt(0);
+    var denominator = BigInteger.BigInt(1);
+    while (BigInteger.greaterThan(BigInteger.multiply(BigInteger.multiply(t, scaling), BigInteger.BigInt(2)), denominator) ||
+           BigInteger.greaterThan(BigInteger.multiply(a, BigInteger.BigInt(2)), BigInteger.multiply(b, k))) {
+      t = BigInteger.multiply(t, a);
+      k = BigInteger.add(k, BigInteger.BigInt(1));
+      y = BigInteger.add(BigInteger.multiply(y, BigInteger.multiply(k, b)), t);
+      denominator = BigInteger.multiply(denominator, BigInteger.multiply(k, b));
+    }
+    return {
+      numerator: BigInteger.multiply(y, scaling),
+      denominator: denominator
+    };
+  }
+  function exp(a, b, scaling) {
+    if (BigInteger.lessThan(a, BigInteger.BigInt(0))) {
+      var tmp = expp(BigInteger.unaryMinus(a), b, scaling);
+      return BigInteger.divide(BigInteger.multiply(BigInteger.multiply(scaling, scaling), tmp.denominator), tmp.numerator);
+    }
+    var tmp = expp(a, b, scaling);
+    return BigInteger.divide(tmp.numerator, tmp.denominator);
+  }
+
+  var a = exp(x.a, this.scalingCoefficient, this.scalingCoefficient);
+  var b = exp(x.b, this.scalingCoefficient, this.scalingCoefficient);
+  b = BigInteger.add(b, BigInteger.BigInt(1));
+  return new Interval(a, b);
+};
+Interval.Context.prototype.fromInteger = function (a) {
+  return this.c.fromInteger(a);
+};
 Interval.Context.prototype.fromIntegers = function (a, b) {
-  return new Interval(this.down.fromInteger(a), this.up.fromInteger(b));
+  return new Interval(this.c.fromInteger(a).a, this.c.fromInteger(b).b);
 };
 //?
 Interval.Context.prototype.toInteger = function (x) {
-  var signA = this.down.sign(x.a);
-  var signB = this.up.sign(x.b);
+  if (this.c.compareTo(x.a, x.b) === 0) {
+    return {sign: this.c.sign(x.a), integer: this.c.round(x.a)};
+  }
+  var signA = this.c.sign(x.a);
+  var signB = this.c.sign(x.b);
   if (signA === signB) {
-    var candidateA = this.down.round(x.a);
-    var candidateB = this.up.round(x.b);
-    if (BigInteger.compareTo(candidateA, candidateB) === 0) {
+    var candidateA = this.c.round(x.a);
+    var candidateB = this.c.round(x.b);
+    if (!BigInteger.lessThan(candidateA, candidateB)) {
       return {sign: signA, integer: candidateA};
     }
   }
@@ -6558,20 +8520,36 @@ Interval.prototype.toString = function () {
   return "[" + this.a.toString() + ";" + this.b.toString() + "]";
 };
 
-Expression.prototype.evaluate = function (context) {
-  var e = this;
+var evaluateExpression = function (e, context) {
   if (e instanceof Expression.Integer) {
     var n = e.value;
-    return context.fromIntegers(n, n);
+    return context.fromInteger(n);
   } else if (e instanceof Expression.NthRoot) {
     var a = e.a;
     var n = e.n;
     if (a instanceof Expression.Integer) {
       return context.nthRoot(a.value, n);
     }
+    var y = evaluateExpression(e.a, context);
+    if (y === "CANNOT_DIVIDE" || y == null) {
+      return y;
+    }
+    //TODO: debug
+    var yy = new Interval(context.nthRoot(y.a, n).a, context.nthRoot(y.b, n).b);
+    var s = context.nthRoot(context.scalingCoefficient, n);
+    yy = context.divide(yy, context.multiply(Interval.degenerate(context.scalingCoefficient), s));
+    return yy;
   } else if (e instanceof Expression.BinaryOperation) {
-    var a = e.a.evaluate(context);
-    var b = e.b.evaluate(context);
+    if (e.a === Expression.E && e.getS() === "^") {
+      var b = evaluateExpression(e.b, context);
+      if (b === "CANNOT_DIVIDE") {
+        return b;
+      }
+      return context.exp(b);
+    }
+    
+    var a = evaluateExpression(e.a, context);
+    var b = evaluateExpression(e.b, context);
     if (a === "CANNOT_DIVIDE") {
       return a;
     }
@@ -6590,7 +8568,7 @@ Expression.prototype.evaluate = function (context) {
         return context.divide(a, b);
       } else if (operator === "^") { // Expression.PolynomialRoot^3
         var result = a;
-        var n = Number.parseInt(e.b.value.toString(), 10);//TODO: FIX!
+        var n = e.b.toNumber();//TODO: FIX!
         for (var i = 1; i < n; i += 1) {
           result = context.multiply(result, a);
         }
@@ -6600,114 +8578,132 @@ Expression.prototype.evaluate = function (context) {
   } else if (e instanceof Expression.PolynomialRoot) {
     var i = e.polynomial.getZero(e.interval, context.precision);
     var cd = i.a.getDenominator().lcm(i.b.getDenominator());
-    return context.divide(context.fromIntegers(i.a.getNumerator().multiply(cd.divide(i.a.getDenominator())).value, i.b.getNumerator().multiply(cd.divide(i.b.getDenominator())).value), context.fromIntegers(cd.value, cd.value));
+    return context.divide(context.fromIntegers(i.a.getNumerator().multiply(cd.divide(i.a.getDenominator())).value,
+                                               i.b.getNumerator().multiply(cd.divide(i.b.getDenominator())).value),
+                          context.fromInteger(cd.value));
   }
   return undefined;
 };
 
-var digitsToDecimalNumber = function (sign, value, fractionDigits, toMathML) {
+var decimalToString = function (sign, number) {
+  return (sign < 0 ? "-" : "") + number;
+};
+
+var complexToString = function (real, imaginary) {
+  return real + (imaginary.indexOf('-') === -1 ? '+' : '') + imaginary + 'i';
+};
+
+var digitsToDecimalNumber = function (sign, value, fractionDigits, decimalToStringCallback) {
   // TODO: fix
   // new Intl.NumberFormat().format(1.1)
   // "<math decimalpoint=\"" + decimalSeparator + "\"></math>" -?
-  var digits = (BigInteger.compareTo(value, BigInteger.ZERO) < 0 ? BigInteger.negate(value) : value).toString();
+  var digits = (BigInteger.lessThan(value, BigInteger.BigInt(0)) ? BigInteger.unaryMinus(value) : value).toString();
   var decimalSeparator = ".";
   var zeros = "";
   for (var i = 0; i < fractionDigits; i += 1) {
     zeros += "0";
   }
   var number = (fractionDigits === 0 ? digits : (digits.slice(0, -fractionDigits) || "0") + decimalSeparator + (zeros + digits).slice(-fractionDigits));
-  return toMathML ? (sign < 0 ? "<mrow>" : "") + (sign < 0 ? "<mo>&minus;</mo>" : "") + "<mn>" + number + "</mn>" + (sign < 0 ? "</mrow>" : "") : (sign < 0 ? "-" : "") + number;
+  return decimalToStringCallback(sign, number);
 };
-
-var toDecimalNumberOld = function (numerator, denominator, fractionDigits, toMathML) {
-  var sign = (BigInteger.compareTo(numerator, BigInteger.ZERO) < 0 ? -1 : +1) * (BigInteger.compareTo(denominator, BigInteger.ZERO) < 0 ? -1 : +1);
-  var abs = function (x) {
-    return BigInteger.compareTo(x, BigInteger.ZERO) < 0 ? BigInteger.negate(x) : x;
-  };
-  var n = abs(numerator);
-  var d = abs(denominator);
 
   //? ((n * 10**(fractionDigits + 1)) ~/ d + 5) ~/ 10
 
-  var x = BigInteger.multiply(n, BigInteger.pow(BigInteger.TEN, fractionDigits));
-  var q = BigInteger.divide(x, d);
-  var r = BigInteger.subtract(x, BigInteger.multiply(q, d));
-  if (BigInteger.compareTo(BigInteger.add(r, r), d) >= 0) {
-    q = BigInteger.add(q, 1);
-    r = BigInteger.subtract(r, d);
-  }
-  return digitsToDecimalNumber(sign, q, fractionDigits, toMathML);
-};
-
-Expression.toDecimalStringInternal = function (expression, fractionDigits, toMathML) {
-  if (expression instanceof Expression.Integer) {
-    return toDecimalNumberOld(expression.value, BigInteger.ONE, fractionDigits, toMathML);
-  }
-  if (expression instanceof Expression.Division) {
+var toDecimalStringInternal = function (expression, fractionDigits, decimalToStringCallback, complexToStringCallback) {
+  decimalToStringCallback = decimalToStringCallback || decimalToString;
+  complexToStringCallback = complexToStringCallback || complexToString;
+  
+  if (expression instanceof Expression.Division || expression instanceof Expression.Addition) {
     var numerator = expression.getNumerator();//.unwrap();
     var denominator = expression.getDenominator();//.unwrap();
-    if (numerator instanceof Expression.Integer && denominator instanceof Expression.Integer) {
-      return toDecimalNumberOld(numerator.value, denominator.value, fractionDigits, toMathML);
-    }
-    if (numerator instanceof Expression.Complex && denominator instanceof Expression.Integer) {
-      var real = toDecimalNumberOld(numerator.real.value, denominator.value, fractionDigits, toMathML);
-      var imaginary = toDecimalNumberOld(numerator.imaginary.value, denominator.value, fractionDigits, toMathML);
-      return real + (numerator.imaginary.compareTo(Expression.ZERO) >= 0 ? (toMathML ? "<mo>+</mo>" : "+") : "") + imaginary + (toMathML ? "<mo>&#x2062;</mo><mi>i</mi>" : "i");
+    if (denominator instanceof Expression.Integer) {
+      if (numerator instanceof Expression.Addition || numerator instanceof Expression.Multiplication || numerator instanceof Expression.Complex) {
+        var realValue = Expression.ZERO;
+        var imaginaryValue = Expression.ZERO;
+        var ok = true;
+        var e = numerator;
+        for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
+          var c = null;
+          var r = Expression.ONE;
+          for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+            if (c == null && y instanceof Expression.Complex) {
+              c = y;
+            } else if (y instanceof Expression.NthRoot || y instanceof Expression.Integer) {//TODO: ?
+              r = r.multiply(y);
+            } else {
+              ok = false;
+            }
+          }
+          realValue = realValue.add(r.multiply(c == null ? Expression.ONE : c.real));
+          imaginaryValue = imaginaryValue.add(c != null ? r.multiply(c.imaginary) : Expression.ZERO);
+        }
+        if (ok && !imaginaryValue.equals(Expression.ZERO)) {
+          realValue = realValue.divide(denominator);
+          imaginaryValue = imaginaryValue.divide(denominator);
+          var real = toDecimalStringInternal(realValue, fractionDigits, decimalToStringCallback, complexToStringCallback);
+          var imaginary = toDecimalStringInternal(imaginaryValue, fractionDigits, decimalToStringCallback, complexToStringCallback);
+          return complexToStringCallback(realValue.equals(Expression.ZERO) ? '' : real, imaginaryValue.equals(Expression.ONE) ? '' : imaginary);
+        }
+      }
     }
   }
+  //TODO: remove - ?
   if (expression instanceof Expression.NthRoot) {
     var a = expression.a;//.unwrap();
     if (a instanceof Expression.Integer) {
       var A = a.value;
       var n = expression.n;
-      var c = BigInteger.pow(BigInteger.TEN, fractionDigits);
-      var sA = BigInteger.multiply(A, BigInteger.pow(c, n));
-      var tmp = nthRoot(sA, n);
-      var x0 = tmp.x0;
-      var x1 = tmp.x1;
+      var scale = BigInteger.exponentiate(BigInteger.BigInt(10), BigInteger.BigInt(fractionDigits));
+      var sA = BigInteger.multiply(A, BigInteger.exponentiate(scale, BigInteger.BigInt(n)));
+
+      var x0 = nthRoot(sA, BigInteger.BigInt(n));
+      var x1 = BigInteger.lessThan(BigInteger.exponentiate(x0, BigInteger.BigInt(n)), sA) ? BigInteger.add(x0, BigInteger.BigInt(1)) : x0;
+
       // root - x0 < x1 - root
       // 2root < x0 + x1
       // 2**n * A < (x0 + x1)**n
-      var nearest = BigInteger.compareTo(BigInteger.multiply(BigInteger.pow(BigInteger.TWO, n), sA), BigInteger.pow(BigInteger.add(x0, x1), n)) < 0 ? x0 : x1;
-      return toDecimalNumberOld(nearest, c, fractionDigits, toMathML);
+      var nearest = BigInteger.lessThan(BigInteger.multiply(BigInteger.exponentiate(BigInteger.BigInt(2), BigInteger.BigInt(n)), sA), BigInteger.exponentiate(BigInteger.add(x0, x1), BigInteger.BigInt(n))) ? x0 : x1;
+      return toDecimalStringInternal(new Expression.Division(new Expression.Integer(nearest), new Expression.Integer(scale)), fractionDigits, decimalToStringCallback, complexToStringCallback);
     }
   }
   //---
-  if (!Expression.has(expression, Expression.NthRoot) &&
-      !Expression.has(expression, Expression.PolynomialRoot)) {
-    self.setTimeout(function () {
-      throw new TypeError("toDecimalString:" + fractionDigits + ":" + expression.toString({}));
-    }, 0);
+  if (!Expression.has(expression, Expression.Symbol) &&
+      !Expression.has(expression, Expression.NthRoot) &&
+      !Expression.has(expression, Expression.PolynomialRoot) &&
+      !(expression instanceof Expression.Integer) &&
+      !(expression instanceof Expression.Division)) {
+    throw new TypeError("toDecimalString:" + fractionDigits + ":" + expression.toString({}));
   }
   if (fractionDigits < 0 || fractionDigits > 9007199254740991) {
     throw new RangeError();
   }
   var sign = 0;
   var result = undefined;
-  var guessedPrecision = fractionDigits + 1;
+  var guessedPrecision = 0;
+  var scale = BigInteger.exponentiate(BigInteger.BigInt(10), BigInteger.BigInt(fractionDigits));
   while (result == undefined) {
     var context = new Interval.Context(guessedPrecision);
-    var x = new Expression.Multiplication(expression, new Expression.Integer(BigInteger.pow(BigInteger.TEN, fractionDigits))).evaluate(context);
-    if (x === "CANNOT_DIVIDE") {
-      x = context.fromIntegers(BigInteger.negate(BigInteger.ONE), BigInteger.ONE); // to continue the loop
-    }
+    var x = evaluateExpression(expression, context);
     if (x == undefined) {
       return undefined;
     }
-    var tmp = context.toInteger(x);
-    sign = tmp.sign;
-    result = tmp.integer;
-    guessedPrecision *= 2;
+    if (x !== "CANNOT_DIVIDE") { // continue the loop otherwise
+      x = context.multiply(context.fromInteger(scale), x);
+      var tmp = context.toInteger(x);
+      sign = tmp.sign;
+      result = tmp.integer;
+    }
+    guessedPrecision = (guessedPrecision === 0 ? 1 : guessedPrecision * 2);
   }
-  return digitsToDecimalNumber(sign, result, fractionDigits, toMathML);
+  return digitsToDecimalNumber(sign, result, fractionDigits, decimalToStringCallback);
 };
 
-}(this));
+self.toDecimalStringInternal = toDecimalStringInternal;
 
-/*global Expression*/
-
+})();
 (function () {
-  "use strict";
+"use strict";
+  
 
   function GF2(a) {
     this.a = a;
@@ -6717,9 +8713,6 @@ Expression.toDecimalStringInternal = function (expression, fractionDigits, toMat
   Expression.GF2 = GF2;
   Expression.GF2.prototype.toString = function (options) {
     return "GF2(" + this.a.toString(Expression.setTopLevel(true, options)) + ")";
-  };
-  Expression.GF2.prototype.toMathML = function (options) {
-    return this.a.toMathML(options);
   };
 
   function GF2Value(value) {
@@ -6782,19 +8775,12 @@ Expression.toDecimalStringInternal = function (expression, fractionDigits, toMat
     return this.value.toString();
   };
 
-  Expression.GF2Value.prototype.toMathML = function (options) {
-    return "<mrow>" + "<mn>" + this.value.toString() + "</mn>" + "</mrow>";
-  };
-
-}());
-
-/*global Expression */
-
+})();
 (function () {
 "use strict";
+  
 
   var Integer = Expression.Integer;
-  var Symbol = Expression.Symbol;
   var Addition = Expression.Addition;
   var Multiplication = Expression.Multiplication;
   var Division = Expression.Division;
@@ -6803,12 +8789,13 @@ Expression.toDecimalStringInternal = function (expression, fractionDigits, toMat
 
 var separateSinCos = function (e) {
   if (!(e instanceof Multiplication)) {
-    throw new Error();
+    throw new TypeError();
   }
   var sinCos = undefined;
   var other = undefined;
-  for (var multiplications = e.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-    var v = multiplications.value();
+  var x = e;
+  for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
+    var v = y;
     if (v instanceof Sin || v instanceof Cos || 
         (v instanceof Exponentiation && (v.a instanceof Sin || v.a instanceof Cos))) {
       sinCos = sinCos == undefined ? v : sinCos.multiply(v);
@@ -6845,7 +8832,7 @@ var contractTrigonometryInternal = function (a, b) {
   if (a instanceof Cos && b instanceof Cos) {
     return ax.subtract(bx).cos().divide(Expression.TWO).add(ax.add(bx).cos().divide(Expression.TWO));
   }
-  throw new Error();
+  throw new TypeError();
 };
 
 // page 306
@@ -6861,12 +8848,15 @@ var contractTrigonometryPower = function (u) {
 // page 318
 var contractTrigonometryProduct = function (u) {
   var i = u.factors();
-  var a = i.value();
-  i = i.next();
-  var b = i == undefined ? undefined : i.value();
-  i = i == undefined ? undefined : i.next();
-  var rest = i == undefined || i.e == undefined ? Expression.ONE : i.e;//TODO: fix
-  
+  var a = i.next().value;
+  var b = i.next().value;
+  var rest = Expression.ONE;
+  var y = i.next().value;
+  while (y != null) {
+    rest = y.multiply(rest);//TODO: fix
+    y = i.next().value;
+  }
+
   if (a instanceof Exponentiation) {
     a = contractTrigonometryPower(a);
     return contractTrigonometryRules(a.multiply(b).multiply(rest));
@@ -6903,16 +8893,16 @@ var contractTrigonometryRules = function (u) {
     if (d instanceof Multiplication) {
       return expandMainOp(c.multiply(contractTrigonometryProduct(d)));
     }
-    throw new Error();
+    throw new TypeError();
   }
   if (v instanceof Addition) {
     var s = Expression.ZERO;
-    for (var additions = v.summands(); additions != undefined; additions = additions.next()) {
-      var y = additions.value();
-      if (y instanceof Multiplication || y instanceof Exponentiation) {
-        s = s.add(contractTrigonometryRules(y));
+    var e = v;
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
+      if (x instanceof Multiplication || x instanceof Exponentiation) {
+        s = s.add(contractTrigonometryRules(x));
       } else {
-        s = s.add(y);
+        s = s.add(x);
       }
     }
     return s;
@@ -6968,7 +8958,10 @@ var map = function (f, u) {
     //TODO: fix
     return u;//?
   }
-  throw new Error();
+  if (u instanceof Expression.Degrees) {
+    return u;//?
+  }
+  throw new TypeError();
 };
 
 // page 303
@@ -6982,7 +8975,7 @@ var expandTrigonometryRulesInternal = function (a, b, type) {
     // sin(a + b) = sin(a) * cos(b) + cos(a) * sin(b)
     return expandTrigonometryRules(a, "sin").multiply(expandTrigonometryRules(b, "cos")).add(expandTrigonometryRules(a, "cos").multiply(expandTrigonometryRules(b, "sin")));
   }
-  throw new Error(type);
+  throw new TypeError(type);
 };
 
 var expandTrigonometryRules = function (A, type) {
@@ -6992,7 +8985,7 @@ var expandTrigonometryRules = function (A, type) {
     var a = A.a;
     var b = A.b;
     if (!(a instanceof Integer)) {
-      throw new Error();
+      throw new TypeError();
     }
     if (a.compareTo(Expression.ONE.negate()) === 0) {
       if (type === "cos") {
@@ -7015,7 +9008,7 @@ var expandTrigonometryRules = function (A, type) {
       return expandTrigonometryRulesInternal(a.a.divide(b), a.b.divide(b), type);
     }
   }
-  if (A instanceof Symbol) {
+  if (A instanceof Expression.Symbol || A instanceof Expression.Degrees) {
     if (type === "cos") {
       return A.cos();
     }
@@ -7023,13 +9016,13 @@ var expandTrigonometryRules = function (A, type) {
       return A.sin();
     }
   }
-  throw new Error();
+  throw new TypeError();
 };
 
 // CA and SC, EA, p. 303
 
 var expandTrigonometry = function (u) {
-  if (u instanceof Integer || u instanceof Symbol) {
+  if (u instanceof Integer || u instanceof Expression.Symbol) {
     return u;
   }
   var v = map(expandTrigonometry, u);
@@ -7043,7 +9036,7 @@ var expandTrigonometry = function (u) {
 };
 
 var contractTrigonometry = function (u) {
-  if (u instanceof Integer || u instanceof Symbol) {
+  if (u instanceof Integer || u instanceof Expression.Symbol) {
     return u;
   }
   var v = map(contractTrigonometry, u);
@@ -7060,7 +9053,7 @@ var contractTrigonometry = function (u) {
     return v;
   }
   return v;//?
-  //throw new Error();
+  //throw new TypeError();
 };
 
 // page 323
@@ -7076,110 +9069,17 @@ var simplifyTrigonometry = function (u) {
   if (!hasTrigonometry(u)) {
     return u;
   }
-  var n = expandTrigonometry(u.getNumerator());
+  var n = u.getNumerator();
+  n = expandTrigonometry(n);
   n = contractTrigonometry(n);
-  var d = expandTrigonometry(u.getDenominator());
+  var d = u.getDenominator();
+  d = expandTrigonometry(d);
   d = contractTrigonometry(d);
   return n.divide(d);
 };
 
 Expression.simplifyTrigonometry = simplifyTrigonometry;//?
 
-Expression.Multiplication.prototype.compare4Multiplication = function (y) {
-  var x = this;
-  if (y instanceof Addition) {//TODO: fix
-    return 0 - y.compare4Multiplication(x);
-  }
-  var i = x.factors();
-  var j = y.factors();
-  while (i != undefined && j != undefined) {
-    var a = i.value();
-    i = i.next();
-    var b = j.value();
-    j = j.next();
-    var c = a.compare4Multiplication(b);
-    if (c !== 0) {
-      return c;
-    }
-  }
-  return i != undefined ? +1 : (j != undefined ? -1 : 0);
-};
-
-Expression.Multiplication.compare4Addition = function (x, y) {
-  var i = x.factors();
-  var j = y.factors();
-  while (i != undefined && j != undefined) {
-    var a = i.value();
-    i = i.next();
-    var b = j.value();
-    j = j.next();
-    var c = a.compare4Addition(b);
-    if (c !== 0) {
-      return c;
-    }
-  }
-  return i != undefined ? +1 : (j != undefined ? -1 : 0);
-};
-
-
-// cos(2 * x) * cos(x)
-Expression.Multiplication.prototype.compare4MultiplicationSymbol = function (x) {
-  return 0 - this.compare4Multiplication(x);
-};
-
-Expression.Function.prototype.compare4Addition = function (y) {
-  if (y instanceof Expression.Function) {
-    return this.name < y.name ? -1 : (y.name < this.name ? +1 : this.a.compare4Addition(y.a));
-  }
-  return +1;
-};
-
-Expression.prototype.compare4AdditionSymbol = function (x) {
-  var y = this;
-  if (y instanceof Expression.Function) {
-    return -1;
-  }
-  return Expression.prototype.compare4Addition.call(x, y);
-};
-
-Symbol.prototype.compare4Addition = function (y) {
-  return y.compare4AdditionSymbol(this);
-};
-
-Expression.Function.prototype.compare4Multiplication = function (y) {
-  if (y instanceof Expression.NthRoot) {
-    return +1;
-  }
-  if (y instanceof Expression.Function) {
-    return this.name < y.name ? -1 : (y.name < this.name ? +1 : this.a.compare4Multiplication(y.a));
-  }
-  return +1;
-};
-
-Expression.Function.prototype.compare4MultiplicationInteger = function (x) {
-  return 0 - this.compare4Multiplication(x);
-};
-
-Expression.Function.prototype.compare4MultiplicationSymbol = function (x) {
-  return -1;//?
-};
-
-Expression.Function.prototype.compare4MultiplicationNthRoot = function (x) {
-  return 0 - this.compare4Multiplication(x);
-};
-
-Expression.Function.prototype.pow = function (y) {
-  if (this instanceof Expression.NthRoot) {
-    return Expression.prototype.pow.call(this, y);
-  }
-  if (y instanceof Expression.Integer) {
-    if (y.compareTo(Expression.ONE) > 0) {
-      return new Expression.Exponentiation(this, y);
-    }
-    return Expression.prototype.pow.call(this, y);
-  }
-  throw new RangeError("NotSupportedError");
-};
 
 function Sin(x) {
   Expression.Function.call(this, "sin", x);
@@ -7187,67 +9087,181 @@ function Sin(x) {
 Sin.prototype = Object.create(Expression.Function.prototype);
 
 //TODO: new 2017-04-26
-var simplifyConstantValueInternal = function (a, type) {
-  a = a.remainder(Integer.parseInteger("360"));
-  var d = Number.parseInt(a.toString(), 10);
-  if (type === "cos") {
-    d = 90 - d;
-    if (d >= 360 - 90) {
-      d -= 360;
-    }
+var simplifyConstantValueInternal = function (d) {
+  if (d >= +360 || d <= -360) {
+    throw new RangeError();
   }
   if (d < 0) {
     d += 360;
   }
-  var s = d >= 180 ? Expression.ONE.negate() : Expression.ONE;
   if (d >= 180) {
-    d -= 180;
+    d = d - 180;
+    var tmp = simplifyConstantValueInternal(d);
+    return tmp == null ? null : tmp.negate();
   }
-  if (d >= 90) {
+  if (d > 90) {
     d = 180 - d;
+    var tmp = simplifyConstantValueInternal(d);
+    return tmp == null ? null : tmp.negate();
   }
+
+  function f(d) {
+    // https://en.wikipedia.org/wiki/Trigonometric_constants_expressed_in_real_radicals#Calculated_trigonometric_values_for_sine_and_cosine
+    var x = simplifyConstantValueInternal(d * 2);
+    return x == null ? null : Expression.TWO.add(Expression.TWO.multiply(x)).squareRoot().divide(Expression.TWO);
+  }
+  function ff(x) {//TODO: a+b
+    // cos(2x) = 2cos^2(x)-1
+    var y = simplifyConstantValueInternal(x / 2);
+    return Expression.TWO.multiply(y.multiply(y)).subtract(Expression.ONE);
+  }
+
+  if (d === 3) {
+    // https://en.wikipedia.org/wiki/Trigonometric_constants_expressed_in_real_radicals#3°:_regular_hexacontagon_(60-sided_polygon)
+    return RPN('(2*(5^0.5+1)^0.5*5^(1/4)+2*(3*5^0.5+3)^0.5*5^(1/4)+2^0.5-6^0.5-10^0.5+30^0.5)/16');
+  }
+  if (d === 6) {
+    return ff(d);
+  }
+  if (d === 12) {
+    return ff(d);
+  }
+  if (d === 24) {
+    // https://en.wikipedia.org/wiki/Trigonometric_constants_expressed_in_real_radicals#24°:_sum_12°_+_12°
+    //return RPN('(sqrt(6*(5-sqrt(5)))+sqrt(5)+1)/8');
+    return ff(d);
+  }
+  if (d === 42) {
+    // cos(42) = sin(48) = 2*sin(24)*cos(24)
+    return RPN('2*sin(24)*cos(24)');
+  }
+  if (d === 9) {
+    return RPN('cos(3)cos(6)-sin(3)sin(6)');
+  }
+  if (d === 21) {
+    return RPN('cos(3)cos(18)-sin(3)sin(18)');
+  }
+  if (d === 27) {
+    return RPN('cos(3)cos(24)-sin(3)sin(24)');
+  }
+  if (d === 33) {
+    return RPN('cos(3)cos(30)-sin(3)sin(30)');
+  }
+  if (d === 39) {
+    return RPN('cos(3)cos(36)-sin(3)sin(36)');
+  }
+
+  if (d === 7.5) {
+    // cos(7.5) = cos(67.5 - 60) = cos(3pi/8)*cos(-60) - sin(3pi/8)*sin(-60)
+    return RPN('cos(3pi/8)*cos(-60) - sin(3pi/8)*sin(-60)');
+  }
+  if (d === 90 - 7.5) {
+    // sin(7.5) = sin(67.5 - 60) = sin(3pi/8)*cos(-60) + cos(3pi/8)*sin(-60)
+    return RPN('sin(3pi/8)*cos(-60) + cos(3pi/8)*sin(-60)');
+  }
+  if (d === 90 - 52.5) {
+    // sin(52.5) = sin(67.5 - 15) = sin(3pi/8)*cos(-15) + cos(3pi/8)*sin(-15)
+    return RPN('sin(3pi/8)*cos(-15) + cos(3pi/8)*sin(-15)');
+  }
+  if (d === 52.5) {
+    // cos(52.5) = cos(67.5 - 15) = cos(3pi/8)*cos(-15) - sin(3pi/8)*sin(-15)
+    return RPN('cos(3pi/8)*cos(-15) - sin(3pi/8)*sin(-15)');
+  }
+
+  if (d > 0 && d < 45) {
+    return f(d);
+  }
+
   if (d === 0) {
-    return s.multiply(Expression.ZERO);
+    return Expression.ONE;
   }
+
+  // https://en.wikipedia.org/wiki/Sine
+  if (d === 90 - 42) {
+    return RPN('(sqrt(30+sqrt(180))-sqrt(5)+1)/8');
+  }
+  if (d === 90 - 39) {
+    return RPN('((2-sqrt(12))*sqrt(5-sqrt(5))+(sqrt(10)+sqrt(2))*(sqrt(3)+1))/16');
+  }
+  if (d === 90 - 33) {
+    // sin(33) = sin(15)cos(18)+sin(18)cos(15)
+    return simplifyConstantValueInternal(15).multiply(simplifyConstantValueInternal(90 - 18)).add(simplifyConstantValueInternal(18).multiply(simplifyConstantValueInternal(90 - 15)));
+  }
+  if (d === 63) {
+    return RPN('(sqrt(20+sqrt(80))-sqrt(10)+sqrt(2))/8');
+  }
+  if (d === 66) {
+    return RPN('(sqrt(3)+sqrt(15)-sqrt(10-sqrt(20)))/8');
+  }
+  if (d === 69) {
+    return RPN('((2+sqrt(12))*sqrt(5-sqrt(5))-(sqrt(10)+sqrt(2))*(sqrt(3)-1))/16');
+  }
+  if (d === 78) {
+    return RPN('(sqrt(10+sqrt(20))+sqrt(3)-sqrt(15))/8');
+  }
+  if (d === 81) {
+    return RPN('(sqrt(10)+sqrt(2)-sqrt(20-sqrt(80)))/8');
+  }
+  if (d === 84) {
+    return RPN('(sqrt(30-sqrt(180))-sqrt(5)-1)/8');
+  }
+  if (d === 87) {
+    return RPN('((2-sqrt(12))*sqrt(5+sqrt(5))+(sqrt(10)-sqrt(2))(sqrt(3)+1))/16');
+  }
+  //TODO: 
+  //TODO: sin(48)
+
   if (d === 15) {
-    return s.multiply(Expression.TWO.add(Expression.ONE).squareRoot().subtract(Expression.ONE).divide(Expression.TWO.multiply(Expression.TWO.squareRoot())));
+    return f(d);
+  }
+  if (d === 22.5) {
+    return f(d);
   }
   if (d === 30) {
-    return s.multiply(Expression.ONE.divide(Expression.TWO));
+    return Expression.ONE.add(Expression.TWO).squareRoot().divide(Expression.TWO);
   }
   if (d === 45) {
-    return s.multiply(Expression.ONE.divide(Expression.TWO.squareRoot()));
+    return Expression.ONE.divide(Expression.TWO.squareRoot());
   }
   if (d === 60) {
-    return s.multiply(Expression.ONE.add(Expression.TWO).squareRoot().divide(Expression.TWO));
+    return Expression.ONE.divide(Expression.TWO);
+  }
+  if (d === 67.5) {
+    return f(d).negate();//?
   }
   if (d === 75) {
-    return s.multiply(Expression.TWO.add(Expression.ONE).squareRoot().add(Expression.ONE).divide(Expression.TWO.multiply(Expression.TWO.squareRoot())));
+    return f(d);
   }
   if (d === 90) {
-    return s.multiply(Expression.ONE);
+    return Expression.ZERO;
   }
   if (d === 18) {
-    return Expression.TWO.add(Expression.TWO).add(Expression.ONE).squareRoot().subtract(Expression.ONE).divide(Expression.TWO.add(Expression.TWO));
+    var phi = Expression.ONE.add(Expression.Integer.fromNumber(5).squareRoot()).divide(Expression.TWO);
+    return Expression.TWO.add(phi).squareRoot().divide(Expression.TWO);
   }
-  if (d === 54) {
+  if (d === 36) {
     return Expression.TWO.add(Expression.TWO).add(Expression.ONE).squareRoot().add(Expression.ONE).divide(Expression.TWO.add(Expression.TWO));
   }
+
+  if (d === 54) {
+    // http://www.maths.surrey.ac.uk/hosted-sites/R.Knott/Fibonacci/simpleTrig.html#section4.2
+    var phi = Expression.ONE.add(Expression.Integer.fromNumber(5).squareRoot()).divide(Expression.TWO);
+    return Expression.TWO.subtract(Expression.TWO.subtract(phi).squareRoot()).squareRoot().divide(Expression.TWO);
+  }
+  if (d === 72) {
+    return Expression.TWO.add(Expression.TWO).add(Expression.ONE).squareRoot().subtract(Expression.ONE).divide(Expression.TWO.add(Expression.TWO));
+  }
+
   return undefined;
 };
 
 var simplifyConstantValue = function (x, type) {
-  if (x instanceof Integer) {
-    if (x.compareTo(Expression.ZERO) === 0) {
-      return simplifyConstantValueInternal(Expression.ZERO, type);
-    }
-  }
-  if (x instanceof Expression.Degrees) {
-    return simplifyConstantValueInternal(x.value.simplify(), type);
-  }
   var a = undefined;
   var b = undefined;
-  if (x === Expression.PI) {
+  if (x instanceof Integer && x.compareTo(Expression.ZERO) === 0) {
+    a = Expression.ZERO;
+    b = Expression.ONE;
+  } else if (x === Expression.PI) {
     a = Expression.ONE;
     b = Expression.ONE;
   } else if (x instanceof Multiplication && x.a instanceof Integer && x.b === Expression.PI) {
@@ -7259,41 +9273,69 @@ var simplifyConstantValue = function (x, type) {
   } else if (x instanceof Division && x.b instanceof Integer && x.a instanceof Multiplication && x.a.a instanceof Integer && x.a.b === Expression.PI) {
     a = x.a.a;
     b = x.b;
+  } else if (x instanceof Expression.Degrees) {
+    var t = x.value.simplify();
+    if (t instanceof Integer) {
+      a = t;
+      b = Integer.fromNumber(180);
+    } else {
+      throw new TypeError();
+    }
   }
   if (a != undefined && b != undefined) {
-    b = Number.parseInt(b.toString(), 10);
-    if (b === 1 || b === 2 || b === 3 || b === 4 || b === 6 || b === 12) {
-      var d = a.multiply(Integer.parseInteger(Math.floor(180 / b).toString()));
-      return simplifyConstantValueInternal(d, type);
+    b = b.toNumber();
+    var k = 2;
+    if (b >= 1 && b <= 180 && (180 * k) % b === 0) {
+      var d = a.multiply(Integer.fromNumber(Math.floor((180 * k) / b))).remainder(Integer.fromNumber(360 * k)).toNumber();
+      d /= k;
+      if (type === "sin") {
+        d = 90 - d;
+        if (d >= 360 - 90) {
+          d -= 360;
+        }
+      }
+      return simplifyConstantValueInternal(d);
     }
   }
   return undefined;
 };
 
-var isArgumentValid = function (x) {
-  if (simplifyConstantValue(x, "sin") != undefined) {
+var isArgumentValid = function (x, type) {
+  if (x instanceof Expression.Degrees) {
     return true;
   }
-  if (!(Expression.isScalar(x) && x instanceof Symbol) &&
-      !(x instanceof Multiplication && x.a instanceof Integer && Expression.isScalar(x.b) && x.b instanceof Symbol) &&
-      !(x instanceof Addition && isArgumentValid(x.a) && isArgumentValid(x.b)) &&
-      !(x instanceof Division && x.b instanceof Integer && x.a instanceof Addition && isArgumentValid(x.a.a.divide(x.b)) && isArgumentValid(x.a.b.divide(x.b)))) {
-    return false;
+  if (x instanceof Expression.Symbol) {
+    return Expression.isScalar(x);
   }
-  return true;
+  if (x instanceof Addition) {
+    return isArgumentValid(x.a, type) && isArgumentValid(x.b, type);
+  }
+  if (x instanceof Multiplication) {
+    return x.a instanceof Integer && Expression.isScalar(x.b) && x.b instanceof Expression.Symbol;
+  }
+  if (x instanceof Division) {
+    if (x.b instanceof Integer && x.a === Expression.PI) {
+      return true;
+    }
+    if (x.b instanceof Integer && x.a instanceof Multiplication && x.a.b === Expression.PI) {
+      return true;
+    }
+    return x.b instanceof Integer && x.a instanceof Addition && isArgumentValid(x.a.a.divide(x.b), type) && isArgumentValid(x.a.b.divide(x.b), type);
+  }
+  return false;
 };
 
 Expression.prototype.sin = function () {
   var x = this;
-  if (!isArgumentValid(x)) {
-    throw new RangeError("NotSupportedError");
-  }
-  if (x.isNegative()) {
-    return new Sin(x.negate()).negate();
-  }
   var t = simplifyConstantValue(x, "sin");
   if (t != undefined) {
     return t;
+  }
+  if (x.isNegative()) {
+    return x.negate().sin().negate();
+  }
+  if (!isArgumentValid(x, "sin")) {
+    throw new RangeError("NotSupportedError");
   }
   return new Sin(x);
 };
@@ -7305,15 +9347,15 @@ Cos.prototype = Object.create(Expression.Function.prototype);
 
 Expression.prototype.cos = function () {
   var x = this;
-  if (!isArgumentValid(x)) {
-    throw new RangeError("NotSupportedError");
-  }
-  if (x.isNegative()) {
-    return new Cos(x.negate());
-  }
   var t = simplifyConstantValue(x, "cos");
   if (t != undefined) {
     return t;
+  }
+  if (x.isNegative()) {
+    return x.negate().cos();
+  }
+  if (!isArgumentValid(x, "cos")) {
+    throw new RangeError("NotSupportedError");
   }
   return new Cos(x);
 };
@@ -7339,17 +9381,17 @@ Expression.Addition.prototype.compare4Multiplication = function (y) {
   var x = this;
   var i = x.summands();
   var j = y.summands();
-  while (i != undefined && j != undefined) {
-    var a = i.value();
-    i = i.next();
-    var b = j.value();
-    j = j.next();
+  var a = i.next().value;
+  var b = j.next().value;
+  while (a != null && b != null) {
     var c = a.compare4Multiplication(b);
     if (c !== 0) {
       return c;
     }
+    a = i.next().value;
+    b = j.next().value;
   }
-  return i != undefined ? +1 : (j != undefined ? -1 : 0);
+  return a != null ? +1 : (b != null ? -1 : 0);
 };
 
 Expression.Addition.prototype.compare4MultiplicationSymbol = function (x) {
@@ -7359,17 +9401,17 @@ Expression.Addition.prototype.compare4MultiplicationSymbol = function (x) {
 Expression.Addition.compare4Addition = function (x, y) {
   var i = x.summands();
   var j = y.summands();
-  while (i != undefined && j != undefined) {
-    var a = i.value();
-    i = i.next();
-    var b = j.value();
-    j = j.next();
+  var a = i.next().value;
+  var b = j.next().value;
+  while (a != null && b != null) {
     var c = a.compare4Addition(b);
     if (c !== 0) {
       return c;
     }
+    a = i.next().value;
+    b = j.next().value;
   }
-  return i != undefined ? +1 : (j != undefined ? -1 : 0);
+  return a != null ? +1 : (b != null ? -1 : 0);
 };
 
 //!!!
@@ -7383,16 +9425,18 @@ Expression.Degrees.prototype = Object.create(Expression.prototype);
 Expression.Degrees.prototype.toString = function (options) {
   return this.value.toString(options) + "\u00B0";
 };
-Expression.Degrees.prototype.toMathML = function (options) {
-  return "<mrow>" + this.value.toMathML(options) + "<mo>&#x2062;</mo><mi>&deg;</mi></mrow>";
+Expression.Degrees.prototype.equals = function (y) {
+  return y instanceof Expression.Degrees && this.value.equals(y.value);
+};
+Expression.Degrees.prototype.compare4AdditionSymbol = function (y) {
+  return -1;
 };
 
-}());
-
-/*global Expression*/
-
-(function (global) {
-  "use strict";
+})();
+(function () {
+"use strict";
+  
+  
 
   var Integer = Expression.Integer;
 
@@ -7448,6 +9492,14 @@ Expression.Degrees.prototype.toMathML = function (options) {
     return -1;
   };
   Complex.prototype.compare4Multiplication = function (y) {
+    if (y instanceof Complex) {
+      if (y.equals(this)) {
+        return 0;
+      }
+      return 0;
+      //TODO: fix
+      //throw new RangeError("NotSupportedError");//TODO:
+    }
     return -1;//?
   };
   Complex.prototype.compare4MultiplicationSymbol = function (y) {
@@ -7493,19 +9545,25 @@ Expression.Degrees.prototype.toMathML = function (options) {
     return new Complex(this.real.truncatingDivide(f), this.imaginary.truncatingDivide(f));
   };
 
-  Complex.prototype.toStringInternal = function (options, times, i, minus, plus, toString) {
+  Complex.prototype.toStringInternal = function (options, times, i, minus, plus, start, end, toString) {
+    if (this.real.equals(Expression.ZERO)) {
+      if (this.imaginary.equals(Expression.ONE)) {
+        return i;
+      }
+      if (this.imaginary.equals(Expression.ONE.negate())) {
+        return start + minus + i + end;
+      }
+      return start + toString(this.imaginary, options) + times + i + end;
+    }
     var isNegative = this.imaginary.isNegative();
     var imaginary = (isNegative ? this.imaginary.negateCarefully() : this.imaginary);
-    var si = imaginary.equals(Expression.ONE) ? "" : toString(imaginary, options) + times;
-    var sr = this.real.equals(Expression.ZERO) ? "" : toString(this.real, options);
-    return sr + (isNegative ? minus : (this.real.equals(Expression.ZERO) ? "" : plus)) + si + i;
+    var si = (imaginary.equals(Expression.ONE) ? i : start + toString(imaginary, options) + times + i + end);
+    var sr = toString(this.real, options);
+    return start + sr + (isNegative ? minus : plus) + si + end;
   };
 
   Complex.prototype.toString = function (options) {
-    return this.toStringInternal(options, "", "i", "-", "+", function (x, options) { return x.toString(options); });
-  };
-  Complex.prototype.toMathML = function (options) {
-    return "<mrow>" + this.toStringInternal(options, "<mo>&#x2062;</mo>", "<mi>i</mi>", "<mo>&minus;</mo>", "<mo>+</mo>", function (x, options) { return x.toMathML(options); }) + "</mrow>";
+    return this.toStringInternal(options, "", "i", "-", "+", "", "", function (x, options) { return x.toString(options); });
   };
 
   Expression.getComplexConjugate = function (e) {
@@ -7513,11 +9571,9 @@ Expression.Degrees.prototype.toMathML = function (options) {
       return undefined;
     }
     var c = Expression.ZERO;
-    for (var additions = e.summands(); additions != undefined; additions = additions.next()) {
-      var x = additions.value();
+    for (var additions = e.summands(), x = additions.next().value; x != null; x = additions.next().value) {
       var f = undefined;
-      for (var multiplications = x.factors(); multiplications != undefined; multiplications = multiplications.next()) {
-        var y = multiplications.value();
+      for (var multiplications = x.factors(), y = multiplications.next().value; y != null; y = multiplications.next().value) {
         if (y instanceof Complex) {
           f = y;
         }
@@ -7529,16 +9585,107 @@ Expression.Degrees.prototype.toMathML = function (options) {
         c = c.add(x.multiply(fc).divide(f.multiply(fc)).multiply(fc));
       }
     }
+    //!?
+    if (c.equals(e)) {
+      return undefined;
+    }
+    //!?
     return c;
+  };
+  
+  Complex.prototype.compare4MultiplicationInteger = function (y) {
+    return +1;
+  };
+
+  Complex.prototype.remainderInteger = function (x) {
+    return Complex.prototype.remainder.call(x, this);
+  };
+
+  Complex.prototype.remainder = function (y) {
+    function norm(x) {
+      return x instanceof Expression.Integer ? x.multiply(x) : x.multiply(x.conjugate());
+    }
+    function roundDivision(a, b) {
+      if (b.compareTo(Expression.ZERO) < 0) {
+        b = b.negate();
+        a = a.negate();
+      }
+      var sign = a.compareTo(Expression.ONE) < 0 ? Expression.ONE.negate() : Expression.ONE;
+      return a.add(b.truncatingDivide(Expression.TWO).multiply(sign)).truncatingDivide(b);
+    }
+    var x = this;
+    var n = y instanceof Expression.Integer ? x : x.multiply(y.conjugate());
+    var d = y instanceof Expression.Integer ? y : y.multiply(y.conjugate());
+    //TODO: fix
+    var q1 = n instanceof Complex ? roundDivision(n.real, d) : roundDivision(n, d);
+    var q2 = n instanceof Complex ? roundDivision(n.imaginary, d) : Expression.ZERO;
+    var q = q2.compareTo(Expression.ZERO) === 0 ? q1 : new Complex(q1, q2);
+    var r =  x.subtract(y.multiply(q));
+    if (norm(r).compareTo(norm(y)) >= 0) {
+      throw new TypeError();
+    }
+    return r;
+  };
+
+  Complex.prototype.primeFactor = function () {
+
+    function canBeSquare(n) {
+      // https://www.johndcook.com/blog/2008/11/17/fast-way-to-test-whether-a-number-is-a-square/#comment-15700
+      //var bitset = 0;
+      //for (var i = 0; i < 32; i += 1) {
+      //  bitset |= 1 << ((i * i) % 32);
+      //}
+      var bitset = 33751571;
+      var result = (bitset >> (n & 31)) & 1;
+      return result === 1;
+    }
+    function norm(a, b) {
+      return a * a + b * b;
+    }
+    function hasDivisor(r, i, a, b) {
+      var d = a * a + b * b;
+      var x = r * a + i * b;
+      var y = i * a - r * b;
+      return x % d === 0 && y % d === 0;
+    }
+
+    var r = this.real.toNumber();
+    var i = this.imaginary.toNumber();
+    var n = norm(r, i);
+    if (n > (9007199254740991 + 1) / 2) {
+      throw new RangeError("NotSupportedError");
+    }
+
+    for (var fs = QuadraticInteger._factors(n), p = fs.next().value; p != null; p = fs.next().value) {
+      var b = 0;
+      while (p - b * b > 0) {
+        if (canBeSquare(p - b * b)) {
+          var a = Math.floor(Math.sqrt(p - b * b + 0.5));
+          if (a * a === p - b * b) {
+            if (norm(a, b) > 1 && hasDivisor(r, i, a, b)) {
+              return b === 0 ? new Expression.Complex(Expression.ZERO, Expression.Integer.fromNumber(a)) : new Complex(Expression.Integer.fromNumber(a), Expression.Integer.fromNumber(b));
+            }
+          }
+        }
+        b += 1;
+      }
+    }
+
+    if (n > 1) {
+      throw new TypeError();
+    }
+    return this;
   };
 
   Expression.Complex = Complex;
-}());
 
-/*global Expression, ExpressionParser*/
-
-(function (global) {
-  "use strict";
+})();
+(function () {
+"use strict";
+  
+  
+  
+  
 
   var idCounter = 0;
 
@@ -7572,7 +9719,16 @@ Expression.Degrees.prototype.toMathML = function (options) {
   NonSimplifiedExpression.prototype.pow = function (y) {
     return new NonSimplifiedExpression(new Expression.Exponentiation(this, y));
   };
+  
+  NonSimplifiedExpression.prototype.exp = function () {
+    return new NonSimplifiedExpression(Expression.E).pow(this);
+  };
+  NonSimplifiedExpression.prototype.inverse = function () {
+    return new NonSimplifiedExpression(new Expression.Exponentiation(this, Expression.ONE.negate())); // to support the MathML serialization of the `inverse(B)`
+    //return new NonSimplifiedExpression(Expression.ONE).divide(this);
+  };
 
+/*
   NonSimplifiedExpression.prototype.powExpression = function (x) {
     return new NonSimplifiedExpression(new Expression.Exponentiation(x, this));
   };
@@ -7603,6 +9759,11 @@ Expression.Degrees.prototype.toMathML = function (options) {
   NonSimplifiedExpression.prototype.divideExpression = function (x) {
     return new NonSimplifiedExpression(new Expression.Division(x, this));
   };
+*/
+
+  NonSimplifiedExpression.prototype.addExpression = function (x) {
+    throw new TypeError();
+  };
 
   NonSimplifiedExpression.prototype.squareRoot = function () {
     return new NonSimplifiedExpression(new Expression.SquareRoot(this));
@@ -7621,6 +9782,9 @@ Expression.Degrees.prototype.toMathML = function (options) {
   };
   NonSimplifiedExpression.prototype.determinant = function () {
     return new NonSimplifiedExpression(new Expression.Determinant(this));
+  };
+  NonSimplifiedExpression.prototype.rowReduce = function () {
+    return new NonSimplifiedExpression(new Expression.RowReduce(this));
   };
   //?
   NonSimplifiedExpression.prototype.GF2 = function () {
@@ -7689,6 +9853,9 @@ Expression.Degrees.prototype.toMathML = function (options) {
   Expression.Determinant.prototype.simplifyInternal = function (holder) {
     return prepare(this.a, holder).determinant();
   };
+  Expression.RowReduce.prototype.simplifyInternal = function (holder) {
+    return prepare(this.a, holder).rowReduce();
+  };
   Expression.GF2.prototype.simplifyInternal = function (holder) {
     return prepare(this.a, holder).GF2();
   };
@@ -7726,14 +9893,6 @@ Expression.Degrees.prototype.toMathML = function (options) {
   NonSimplifiedExpression.prototype.equals = function (y) {
     return this.simplify().equals(y.simplify());
   };
-  NonSimplifiedExpression.prototype.toMathML = function (options) {
-    //?
-    //options = options.fractionDigits >= 0 ? Object.assign({}, options, {fractionDigits: -1}) : options;
-    if (options.printId != undefined) {
-      return "<mrow id=\"" + this.getId() + "\">" + this.e.toMathML(options) + "</mrow>";
-    }
-    return this.e.toMathML(options);
-  };
 
   //!
   NonSimplifiedExpression.prototype.unwrap = function () {
@@ -7750,6 +9909,10 @@ Expression.Degrees.prototype.toMathML = function (options) {
   };
   NonSimplifiedExpression.prototype.getPrecedence = function () {
     return this.e.getPrecedence();
+  };
+
+  Expression.ElementWisePower.prototype.simplifyInternal = function (holder) {
+    return prepare(this.a, holder).elementWisePower(prepare(this.b, holder));
   };
 
 //?
@@ -7786,14 +9949,15 @@ Expression.Degrees.prototype.toMathML = function (options) {
   };
 
   Expression.NonSimplifiedExpression = NonSimplifiedExpression;
-  global.NonSimplifiedExpression = NonSimplifiedExpression;
 
-}(this));
+  self.NonSimplifiedExpression = NonSimplifiedExpression;
+
+})();
+(function () {
+"use strict";
 /*jslint plusplus: true, vars: true, indent: 2 */
-/*global Expression, Matrix */
-
-(function (global) {
-  "use strict";
+  
+  
 
   //var isAlpha = function (code) {
   //  return (code >= "a".charCodeAt(0) && code <= "z".charCodeAt(0)) ||
@@ -7832,6 +9996,13 @@ Expression.Degrees.prototype.toMathML = function (options) {
     return a.pow(b);
   });
 
+  var UNARY_PLUS = new Operator("+", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE, function (e) {
+    return e;
+  });
+  var UNARY_MINUS = new Operator("-", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE, function (e) {
+    return e.negate();
+  });
+
   var toDegrees = function (a) {
     if (a instanceof Expression.Integer) {
       return new Expression.Degrees(a);
@@ -7848,6 +10019,10 @@ Expression.Degrees.prototype.toMathML = function (options) {
   var prepareTrigonometricArgument = function (a) {
     var x = toDegrees(a);
     return x == null ? a : x;
+  };
+
+  var notSupported = function (a) {
+    throw new TypeError();
   };
 
   var operations = [
@@ -7873,12 +10048,8 @@ Expression.Degrees.prototype.toMathML = function (options) {
     //new Operator("%", 2, LEFT_TO_RIGHT, MULTIPLICATIVE_PRECEDENCE, function (a, b) {
     //  return a.remainder(b);
     //}),
-    new Operator("+", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE, function (e) {
-      return e;
-    }),
-    new Operator("-", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE, function (e) {
-      return e.negate();
-    }),
+    //UNARY_PLUS,
+    //UNARY_MINUS,
     EXPONENTIATION,
     new Operator("**", EXPONENTIATION.arity, EXPONENTIATION.rightToLeftAssociative, EXPONENTIATION.precedence, EXPONENTIATION.i),
     new Operator(".^", 2, RIGHT_TO_LEFT, UNARY_PRECEDENCE, function (a, b) {
@@ -7908,8 +10079,14 @@ Expression.Degrees.prototype.toMathML = function (options) {
     new Operator("inverse", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE, function (a) {
       return a.inverse();
     }),
+    new Operator("det", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE, function (a) {//?
+      return a.determinant();
+    }),
     new Operator("determinant", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE, function (a) {
       return a.determinant();
+    }),
+    new Operator("row-reduce", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE, function (a) {
+      return a.rowReduce();
     }),
     new Operator("transpose", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE, function (a) {
       return a.transpose();
@@ -7933,13 +10110,6 @@ Expression.Degrees.prototype.toMathML = function (options) {
       return a.GF2();
     }),
 
-    new Operator("sin", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, function (a) {
-      if (a.sin == undefined || a.cos == undefined) {
-        throw new RangeError("NotSupportedError");
-      }
-      a = prepareTrigonometricArgument(a);
-      return a.sin();
-    }),
     new Operator("cos", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, function (a) {
       if (a.sin == undefined || a.cos == undefined) {
         throw new RangeError("NotSupportedError");
@@ -7947,12 +10117,21 @@ Expression.Degrees.prototype.toMathML = function (options) {
       a = prepareTrigonometricArgument(a);
       return a.cos();
     }),
-    new Operator("tan", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, function (a) {
+    new Operator("sin", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, function (a) {
       if (a.sin == undefined || a.cos == undefined) {
         throw new RangeError("NotSupportedError");
       }
       a = prepareTrigonometricArgument(a);
-      return a.sin().divide(a.cos());
+      return a.sin();
+    }),
+    new Operator("tan", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, function (a) {
+      if (a.sin == undefined || a.cos == undefined) {
+        throw new RangeError("NotSupportedError");
+      }
+      //a = prepareTrigonometricArgument(a);
+      //return a.sin().divide(a.cos());
+      var a2 = prepareTrigonometricArgument(a.multiply(Expression.TWO));
+      return a2.sin().divide(a2.cos().add(Expression.ONE));
     }),
     new Operator("°", 1, LEFT_TO_RIGHT, UNARY_PRECEDENCE, function (a) {
       var x = toDegrees(a);
@@ -7963,7 +10142,7 @@ Expression.Degrees.prototype.toMathML = function (options) {
     }),
 
     new Operator("exp", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, function (a) {
-      return Expression.E.pow(a);
+      return a.exp();
     }),
     new Operator("log", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, function (a) {
       throw new RangeError("NotSupportedError");
@@ -7974,261 +10153,246 @@ Expression.Degrees.prototype.toMathML = function (options) {
     }),
     new Operator("\\right", 1, LEFT_TO_RIGHT, UNARY_PRECEDENCE_PLUS_ONE, function (a) {
       return a;
+    }),
+ 
+    new Operator("cosh", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, notSupported),
+    new Operator("sinh", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, notSupported),
+    new Operator("tanh", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, notSupported),
+
+    new Operator("arccos", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, notSupported),
+    new Operator("arcsin", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, notSupported),
+    new Operator("arctan", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, notSupported),
+    new Operator("arcosh", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, notSupported),
+    new Operator("arsinh", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, notSupported),
+    new Operator("artanh", 1, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, notSupported),
+
+    new Operator("frac", 2, RIGHT_TO_LEFT, UNARY_PRECEDENCE_PLUS_ONE, function (a, b) {
+      return a.divide(b);
     })
   ];
 
   function OperationSearchCache() {
-    this.array = new Array(32);
-    for (var i = 0; i < this.array.length; i += 1) {
-      this.array[i] = undefined;
-    }
+    this.map = {};
+    this.re = null;
   }
 
-  var asciiToLowerCase = function (charCode) {
-    return (charCode < 65 ? charCode : (charCode < 91 ? charCode + 32 : (charCode < 128 ? charCode : charCode)));
+  OperationSearchCache.prototype.append = function (operator) {
+    this.map[operator.name.toLowerCase()] = operator;
+    this.re = null;
   };
-
-  OperationSearchCache.prototype.append = function (firstCharCode, operator) {
-    var index = asciiToLowerCase(firstCharCode) % this.array.length;
-    if (this.array[index] == undefined) {
-      this.array[index] = [];
+  OperationSearchCache.prototype.getByName = function (name) {
+    return this.map[name.toLowerCase()];
+  };
+  OperationSearchCache.prototype.getRegExp = function () {
+    // https://stackoverflow.com/questions/3561493/is-there-a-regexp-escape-function-in-javascript
+    var escapeRegExp = function (s) {
+      return s.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    };
+    // longest: ? "^T" and "^"
+    // ignore case
+    if (this.re == null) {//TODO: ?
+      var names = [];
+      for (var name in this.map) {
+        if (Object.prototype.hasOwnProperty.call(this.map, name)) {
+          names.push(name);
+        }
+      }
+      names.sort(function (a, b) {
+        return a + '\uFFFF' < b + '\uFFFF' ? -1 : +1;
+      });
+      var source = new Array(names.length);
+      for (var i = 0; i < names.length; i += 1) {
+        source[i] = escapeRegExp(names[i]);
+      }
+      this.re = new RegExp('^(?:' + source.join('|') + ')', 'i');
     }
-    this.array[index].push(operator);
-  };
-  OperationSearchCache.prototype.getAll = function (firstCharCode) {
-    var index = asciiToLowerCase(firstCharCode) % this.array.length;
-    return this.array[index];
+    return this.re;
   };
 
   var operationSearchCache = new OperationSearchCache();
 
   var i = -1;
   while (++i < operations.length) {
-    operationSearchCache.append(operations[i].name.charCodeAt(0), operations[i]);
+    operationSearchCache.append(operations[i]);
   }
 
-  function Input() {
-  }
+  var nextToken = function (tokenizer) {
+    var token = null;
+    do {
+      token = tokenizer.next();
+    } while (token.type === 'whitespace');
+    return token;
+  };
 
-  Input.EOF = -1;
-  Input.trimLeft = function (input, position, skip) {
-    var match = undefined;
-    if ((match = Input.exec(input, position + skip, whiteSpaces)) != undefined) {
-      return position + skip + match.length;
-    }
-    return position + skip;
-  };
-  Input.parseCharacter = function (input, position, characterCode) {
-    var c = Input.getFirst(input, position);
-    if (c !== characterCode) {
-      // TODO: fix error messages
-      // missing the brace ?
-      // "RPN error 0", input ?
-      ExpressionParser.startPosition = position;
-      ExpressionParser.endPosition = position + 1;
-      ExpressionParser.input = input;
-      throw new RangeError("UserError:" + characterCode.toString());
-    }
-    return Input.trimLeft(input, position, 1);
-  };
-  Input.getFirst = function (input, position) {
-    return position < input.length ? input.charCodeAt(position) : Input.EOF;
-  };
-  Input.startsWith = function (input, position, s) {
-    var length = s.length;
-    if (position + length > input.length) {
-      return false;
-    }
-    var i = -1;
-    while (++i < length) {
-      if (asciiToLowerCase(input.charCodeAt(position + i)) !== asciiToLowerCase(s.charCodeAt(i))) {
-        return false;
+  var parsePunctuator = function (tokenizer, token, punctuator) {
+    if (token.type !== 'punctuator' || token.value !== punctuator) {
+      ExpressionParser.startPosition = tokenizer.position - token.value.length;
+      ExpressionParser.endPosition = tokenizer.position;
+      ExpressionParser.input = tokenizer.input;
+      if (token.type === 'EOF') {
+        throw new RangeError("UserError: unexpected end of input, '" + punctuator + "' expected");
       }
+      throw new RangeError("UserError: unexpected '" + token.value + "', '" + punctuator + "' expected");
     }
-    return true;
-  };
-  Input.exec = function (input, position, regularExpression) {
-    if (position === input.length) {
-      return undefined;
-    }
-    var match = regularExpression.exec(position === 0 ? input : input.slice(position));
-    return match != undefined ? match[0] : undefined;
+    token = nextToken(tokenizer);
+    return token;
   };
 
-  function ParseResult(result, position) {
+  function ParseResult(result, token) {
     this.result = result;
-    this.position = position;
+    this.token = token;
   }
 
-  var parseMatrix = function (input, position, context) {
-    var openingBracket = "{".charCodeAt(0);
-    var closingBracket = "}".charCodeAt(0);
+  var parseMatrix = function (tokenizer, token, context) {
+    var openingBracket = "{";
+    var closingBracket = "}";
 
-    //position = Input.parseCharacter(input, position, openingBracket);
+    var rows = [];
+    var hasNextRow = true;
+    while (hasNextRow) {
+      token = parsePunctuator(tokenizer, token, openingBracket);
+      var row = [];
+      var hasNextCell = true;
+      while (hasNextCell) {
+        var tmp = parseExpression(tokenizer, token, context, 0, undefined);
+        token = tmp.token;
+        row.push(tmp.result);
+        if (token.type === 'punctuator' && token.value === ",") {
+          hasNextCell = true;
+          token = nextToken(tokenizer);
+        } else {
+          hasNextCell = false;
+        }
+      }
+      token = parsePunctuator(tokenizer, token, closingBracket);
+      rows.push(row);
+      if (token.type === 'punctuator' && token.value === ",") {
+        hasNextRow = true;
+        token = nextToken(tokenizer);
+      } else {
+        hasNextRow = false;
+      }
+    }
+    token = parsePunctuator(tokenizer, token, "}");
+    return new ParseResult(context.wrap(Expression.Matrix.fromArray(rows)), token);
+  };
+
+  var parseLaTeXMatrix = function (tokenizer, token, context, kind) {
+    token = nextToken(tokenizer);
     var rows = [];
     var firstRow = true;
-    while (firstRow || Input.getFirst(input, position) === ",".charCodeAt(0)) {
+    while (firstRow || (token.type === 'punctuator' && token.value === '\\\\')) {
       if (firstRow) {
         firstRow = false;
       } else {
-        position = Input.trimLeft(input, position, 1);
-      }
-      position = Input.parseCharacter(input, position, openingBracket);
-      var row = [];
-      var firstCell = true;
-      while (firstCell || Input.getFirst(input, position) === ",".charCodeAt(0)) {
-        if (firstCell) {
-          firstCell = false;
-        } else {
-          position = Input.trimLeft(input, position, 1);
-        }
-        var tmp = parseExpression(input, position, context, true, 0, undefined);
-        position = tmp.position;
-        row.push(tmp.result);
-      }
-      position = Input.parseCharacter(input, position, closingBracket);
-      rows.push(row);
-    }
-    //position = Input.parseCharacter(input, position, closingBracket);
-    return new ParseResult(context.wrap(new Expression.Matrix(Matrix.padRows(rows, null))), position);
-  };
-
-  var parseLaTeXMatrix = function (input, position, context, kind) {
-    position = Input.trimLeft(input, position, ("\\begin" + kind).length);
-    var rows = [];
-    var firstRow = true;
-    while (firstRow || (Input.getFirst(input, position) === "\\".charCodeAt(0) && Input.startsWith(input, position, "\\\\"))) {
-      if (firstRow) {
-        firstRow = false;
-      } else {
-        position = Input.trimLeft(input, position, 2);
+        token = nextToken(tokenizer);
       }
       var row = [];
       var firstCell = true;
-      while (firstCell || Input.getFirst(input, position) === "&".charCodeAt(0)) {
+      while (firstCell || token.type === 'punctuator' && token.value === "&") {
         if (firstCell) {
           firstCell = false;
         } else {
-          position = Input.trimLeft(input, position, 1);
+          token = nextToken(tokenizer);
         }
-        var tmp = parseExpression(input, position, context, false, MULTIPLICATION.precedence, undefined);
-        position = tmp.position;
+        var tmp = parseExpression(tokenizer, token, context, ADDITIVE_PRECEDENCE - 1, undefined);
+        token = tmp.token;
         row.push(tmp.result);
       }
       rows.push(row);
     }
-    if (Input.startsWith(input, position, "\\end" + kind)) {
-      position = Input.trimLeft(input, position, ("\\end" + kind).length);
+    if (token.type === 'punctuator' && token.value === "\\end{" + kind + "}") {
+      token = nextToken(tokenizer);
     }
-    return new ParseResult(context.wrap(new Expression.Matrix(Matrix.padRows(rows, null))), position);
+    return new ParseResult(context.wrap(Expression.Matrix.fromArray(rows)), token);
   };
 
-  var parseLaTeXArgument = function (input, position, context) {
-    return parseExpression(input, position, context, true, 0, undefined);
+  var parseLaTeXArgument = function (tokenizer, token, context) {
+    return parseExpression(tokenizer, token, context, 0, undefined);
   };
 
-  var getDecimalFraction = function (integerPartAsString, nonRepeatingFractionalPartAsString, repeatingFractionalPartAsString, exponentSingPartAsString, exponentPartAsString) {
+  var getVulgarFraction = function (vulgarFraction) {
+    var input = normalizeVulgarFractions(vulgarFraction);
+    var e = Expression.Integer.fromString(input.slice(0, input.indexOf('/'))).divide(Expression.Integer.fromString(input.slice(input.indexOf('/') + '/'.length)));
+    return e;
+  };
+
+  var getDecimalFraction = function (integerPart, nonRepeatingFractionalPart, repeatingFractionalPart, exponentPart) {
     var numerator = Expression.ZERO;
-    var denominator = undefined;
-    var factor = undefined;
+    var denominator = Expression.ONE;
 
-    if (integerPartAsString != undefined) {
-      numerator = Expression.Integer.parseInteger(integerPartAsString);
+    if (integerPart != undefined) {
+      numerator = Expression.Integer.fromString(integerPart);
     }
-    if (nonRepeatingFractionalPartAsString != undefined) {
-      factor = Expression.pow(Expression.TEN, nonRepeatingFractionalPartAsString.length);
-      numerator = numerator.multiply(factor).add(Expression.Integer.parseInteger(nonRepeatingFractionalPartAsString));
-      denominator = denominator == undefined ? factor : denominator.multiply(factor);
+    if (nonRepeatingFractionalPart != undefined) {
+      var factor = Expression.pow(Expression.TEN, nonRepeatingFractionalPart.length);
+      numerator = numerator.multiply(factor).add(Expression.Integer.fromString(nonRepeatingFractionalPart));
+      denominator = denominator.multiply(factor);
     }
-    if (repeatingFractionalPartAsString != undefined) {
-      factor = Expression.pow(Expression.TEN, repeatingFractionalPartAsString.length).subtract(Expression.ONE);
-      numerator = numerator.multiply(factor).add(Expression.Integer.parseInteger(repeatingFractionalPartAsString));
-      denominator = denominator == undefined ? factor : denominator.multiply(factor);
+    if (repeatingFractionalPart != undefined) {
+      var factor = Expression.pow(Expression.TEN, repeatingFractionalPart.length).subtract(Expression.ONE);
+      numerator = numerator.multiply(factor).add(Expression.Integer.fromString(repeatingFractionalPart));
+      denominator = denominator.multiply(factor);
     }
-    if (exponentPartAsString != undefined) {
-      factor = Expression.pow(Expression.TEN, Number.parseInt(exponentPartAsString, 10));
-      if (exponentSingPartAsString === "-") {
-        denominator = denominator == undefined ? factor : denominator.multiply(factor);
+    if (exponentPart != undefined) {
+      var exponent = 0 + Number.parseInt(exponentPart, 10);
+      var factor = Expression.pow(Expression.TEN, exponent < 0 ? -exponent : exponent);
+      if (exponent < 0) {
+        denominator = denominator.multiply(factor);
       } else {
         numerator = numerator.multiply(factor);
       }
     }
 
-    var value = denominator == undefined ? numerator : numerator.divide(denominator);
+    var value = numerator.divide(denominator);
     return value;
   };
 
-  var parseDecimalFraction = function (input, position, context, isMatrixElement) {
+  var parseDecimalFraction = function (tokenizer, token, context) {
     var isOnlyInteger = true;
-    var match = undefined;
-    var integerPartAsString = undefined;
-    var nonRepeatingFractionalPartAsString = undefined;
-    var repeatingFractionalPartAsString = undefined;
-    if ((match = Input.exec(input, position, digits)) != undefined) {
-      integerPartAsString = match;
-      position += match.length;
-    }
-    var c = Input.getFirst(input, position);
-    if (c === ".".charCodeAt(0) || (!isMatrixElement && c === ",".charCodeAt(0))) {
-      isOnlyInteger = false;
-      position += 1;
-      if ((match = Input.exec(input, position, digits)) != undefined) {
-        nonRepeatingFractionalPartAsString = match;
-        position += match.length;
-      }
-      c = Input.getFirst(input, position);
-      if (c === "(".charCodeAt(0)) {
-        if ((match = Input.exec(input, position + 1, digits)) != undefined) {
-          c = Input.getFirst(input, position + 1 + match.length);
-          if (c === ")".charCodeAt(0)) {
-            position += 1 + match.length + 1;
-            repeatingFractionalPartAsString = match;
-          }
-        }
-      }
-    }
     var result = undefined;
-    if (integerPartAsString != undefined || nonRepeatingFractionalPartAsString != undefined || repeatingFractionalPartAsString != undefined) {
-      var exponentSingPartAsString = "";
-      var exponentPartAsString = undefined;
-      c = Input.getFirst(input, position);
-      if (c === "e".charCodeAt(0) || c === "E".charCodeAt(0)) {
-        c = Input.getFirst(input, position + 1);
-        if (c === "+".charCodeAt(0) || c === "-".charCodeAt(0)) {
-          exponentSingPartAsString = input.slice(position + 1, position + 2);
-        }
-        if ((match = Input.exec(input, position + 1 + exponentSingPartAsString.length, digits)) != undefined) {
-          position += 1 + exponentSingPartAsString.length + match.length;
-          exponentPartAsString = match;
-        }
-      }
-      result = getDecimalFraction(integerPartAsString, nonRepeatingFractionalPartAsString, repeatingFractionalPartAsString, exponentSingPartAsString, exponentPartAsString);
+    if (token.type === 'integerLiteral') {
+      result = Expression.Integer.fromString(token.value);
       result = context.wrap(result);
-      position = Input.trimLeft(input, position, 0);
+      token = nextToken(tokenizer);
+    } else if (token.type === 'numericLiteral') {
+      var value = token.value;
+      //var match = token.match;
+      var match = decimalFractionWithGroups.exec(value);
+      isOnlyInteger = false;
+      result = getDecimalFraction(match[1], match[2], match[3], match[4]);
+      result = context.wrap(result);
+      token = nextToken(tokenizer);
     }
     //!
     if (isOnlyInteger || result == undefined) {
-      if ((match = Input.exec(input, position, vulgarFractions)) != undefined) {
-        var tmp = parseExpression(normalizeVulgarFractions(match), 0, context, isMatrixElement, 0, undefined);
+      if (token.type === 'vulgarFraction') {
+        var fraction = context.wrap(getVulgarFraction(token.value, context));
         if (result != undefined) {
-          result = ADDITION.i(result, tmp.result).addPosition(position, ADDITION.name.length, input);
+          result = ADDITION.i(result, fraction).addPosition(tokenizer.position - token.value.length, ADDITION.name.length, tokenizer.input);
         } else {
-          result = tmp.result;
+          result = fraction;
         }
-        position = Input.trimLeft(input, position, match.length);
+        token = nextToken(tokenizer);
       }
     }
-    return result != undefined ? new ParseResult(result, position) : undefined;
+    return result != undefined ? new ParseResult(result, token) : undefined;
   };
 
   // TODO: sticky flags - /\s+/y
   var whiteSpaces = /^\s+/;
-  var digits = /^\d+/;
+  var punctuators = /^(?:[,&(){}|]|\\\\|(?:\\begin|\\end)(?:\{[bvp]?matrix\})?)/;
+  var integerLiteral = /^\d+(?![\d.,eE])/; // for performance
+  var integerLiteralWithoutComma = /^\d+(?![\d.eE])/; // for performance
+  var decimalFraction = /^(?=[.,]?\d)\d*(?:[.,]\d*(?:\(\d+\))?)?(?:[eE][\+\-]?\d+)?/;
+  var decimalFractionWithoutComma = /^(?=[.]?\d)\d*(?:[.]\d*(?:\(\d+\))?)?(?:[eE][\+\-]?\d+)?/;
   // Base Latin, Base Latin upper case, Base Cyrillic, Base Cyrillic upper case, Greek alphabet
-  var symbols = /^(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|varsigma|sigma|tau|upsilon|phi|chi|psi|omega|[a-zA-Z\u0430-\u044F\u0410-\u042F\u03B1-\u03C9](?:\_\d+|\_\([a-z\d]+,[a-z\d]+\)|[\u2080-\u2089]+)?)/;
-  var superscripts = /^[\u00B2\u00B3\u00B9\u2070\u2074-\u2079]+/;
+  var symbols = /^(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|varsigma|sigma|tau|upsilon|phi|chi|psi|omega|circ|[a-zA-Z\u0430-\u044F\u0410-\u042F\u03B1-\u03C9])(?:\_\d+|\_\([a-z\d]+,[a-z\d]+\)|[\u2080-\u2089]+)?/;
+  var superscripts = /^[\u00B2\u00B3\u00B9\u2070\u2074-\u2079]+/; // superscript digits 2310456789
   var vulgarFractions = /^[\u00BC-\u00BE\u2150-\u215E]/;
+  var other = /^\S/;
 
+  var decimalFractionWithGroups = /^(\d*)(?:[.,](\d+)?(?:\((\d+)\))?)?(?:[eE]([\+\-]?\d+))?$/;
 
   // s.normalize("NFKD").replace(/[\u2044]/g, "/")
   var normalizeSuperscripts = function (s) {
@@ -8242,9 +10406,6 @@ Expression.Degrees.prototype.toMathML = function (options) {
       }
       if (charCode === 0x00B9) {
         return "1";
-      }
-      if (charCode === 0x2070) {
-        return "0";
       }
       return (charCode - 0x2074 + 4).toString();
     });
@@ -8268,10 +10429,6 @@ Expression.Degrees.prototype.toMathML = function (options) {
     });
   };
 
-  var normalizeFullwidthForms = function (charCode) {
-    return String.fromCharCode(charCode - 0xFF01 + 0x0021);
-  };
-
   var normalizeGreek = function (s) {
     var i = s.indexOf("_");
     var k = i === -1 ? s.length : i;
@@ -8286,141 +10443,168 @@ Expression.Degrees.prototype.toMathML = function (options) {
     return s;
   };
 
-  var parseExpression = function (input, position, context, isMatrixElement, precedence, left) {
+  var parseExpression = function (tokenizer, token, context, precedence, left) {
     var ok = true;
-    var firstCharacterCode = Input.getFirst(input, position);
+    var isDecimalFraction = false;
+    var tmp = undefined;
+    var right = undefined;
     //!
 
-    while (firstCharacterCode !== Input.EOF && ok) {
+    while (token.type !== 'EOF' && ok) {
       var op = undefined;
       var operand = undefined;
-      var tmp = undefined;
-      var match = undefined;
-      var right = undefined;
 
-      if (firstCharacterCode < "0".charCodeAt(0) || firstCharacterCode > "9".charCodeAt(0)) {
-        var operationsArray = operationSearchCache.getAll(firstCharacterCode);
-        if (operationsArray != undefined) {
-          var length = operationsArray.length;
-          var bestMatchLength = 0;//? "^T" and "^"
-          var j = -1;
-          while (++j < length) {
-            var candidate = operationsArray[j];
-            if ((left != undefined && (candidate.arity !== 1 || candidate.rightToLeftAssociative !== RIGHT_TO_LEFT || precedence < MULTIPLICATION.precedence) ||
-                 left == undefined && candidate.arity === 1 && candidate.rightToLeftAssociative === RIGHT_TO_LEFT) &&
-                Input.startsWith(input, position, candidate.name) &&
-                //(!candidate.xyz || !isAlpha(Input.getFirst(input, position + candidate.name.length))) &&//TODO: fix - ExpressionParser.parse("George")
-                bestMatchLength < candidate.name.length) {
-              op = candidate;
-              bestMatchLength = op.name.length;
-            }
-          }
+        var bestMatch = token.type === 'operator' ? operationSearchCache.getByName(token.value) : null;
+        if (bestMatch != null) {
+          op = left == null && bestMatch.name === '+' ? UNARY_PLUS : (left == null && bestMatch.name === '-' ? UNARY_MINUS : bestMatch);
         }
-      }
+        //  if (Input.startsWith(input, position, '\\begin') || Input.startsWith(input, position, '\\end')) {
+        //    op = null;
+        //  }
 
-      if (firstCharacterCode === "f".charCodeAt(0) && op == undefined && (left == undefined && precedence <= UNARY_PRECEDENCE || precedence < MULTIPLICATION.precedence) && Input.startsWith(input, position, "frac")) { // !isAlpha(Input.getFirst(input, position + "frac".length))
-        // https://en.wikipedia.org/wiki/Operand#Positioning_of_operands - prefix notation
-        position = Input.trimLeft(input, position, "frac".length);
-        tmp = parseExpression(input, position, context, isMatrixElement, MULTIPLICATION.precedence, undefined);
-        var a = tmp.result;
-        position = tmp.position;
-        tmp = parseExpression(input, position, context, isMatrixElement, MULTIPLICATION.precedence, undefined);
-        var b = tmp.result;
-        position = tmp.position;
-        // addPosition - ?
-        operand = a.divide(b);
-        ok = true;
-      } else if (op != undefined) {
-        if (precedence > op.precedence + (op.rightToLeftAssociative === RIGHT_TO_LEFT ? 0 : -1)) {
+      //if (op != null && op.name === "\\" && Input.startsWith(input, position, "\\\\")) {
+      //  if (isMatrixElement) {//TODO: optimize
+      //    op = null;
+        //} else if (Input.startsWith(input, position + 1, "begin") || Input.startsWith(input, position + 1, "left")) {
+        //  op = null;
+      //  }
+      //}
+
+      if (op != null && op.name === "frac") { // !isAlpha(Input.getFirst(input, position + "frac".length))
+        if (!(left == null && precedence <= UNARY_PRECEDENCE_PLUS_ONE || precedence < MULTIPLICATION.precedence)) {
           ok = false;
         } else {
-          var operatorPosition = position;
-          position = Input.trimLeft(input, position, op.name.length);
+        // https://en.wikipedia.org/wiki/Operand#Positioning_of_operands - prefix notation
+
+        token = nextToken(tokenizer);
+        tmp = parseExpression(tokenizer, token, context, MULTIPLICATION.precedence, undefined);
+        var a = tmp.result;
+        token = tmp.token;
+        tmp = parseExpression(tokenizer, token, context, MULTIPLICATION.precedence, undefined);
+        var b = tmp.result;
+        token = tmp.token;
+        // addPosition - ?
+        operand = op.i(a, b);
+        ok = true;
+        }
+      } else if (op != undefined) {
+        // TODO: check if the checks are needed (tests - ?)
+        if (!(left != undefined && (op.arity !== 1 || op.rightToLeftAssociative !== RIGHT_TO_LEFT || precedence < MULTIPLICATION.precedence) ||
+              left == undefined && op.arity === 1 && op.rightToLeftAssociative === RIGHT_TO_LEFT) ||
+            //!(!candidate.xyz || !isAlpha(Input.getFirst(input, position + candidate.name.length))) ||//TODO: fix - ExpressionParser.parse("George")
+            precedence > op.precedence + (op.rightToLeftAssociative === RIGHT_TO_LEFT ? 0 : -1)) {
+          ok = false;
+        } else {
+          var operatorPosition = tokenizer.position - token.value.length;
+          token = nextToken(tokenizer);
           if (op.arity === 1 && op.rightToLeftAssociative !== RIGHT_TO_LEFT) {
             //TODO: fix
             ExpressionParser.startPosition = operatorPosition;
             ExpressionParser.endPosition = operatorPosition + op.name.length;
-            ExpressionParser.input = input;
-            left = op.i(left).addPosition(operatorPosition, op.name.length, input);
+            ExpressionParser.input = tokenizer.input;
+            left = op.i(left).addPosition(operatorPosition, op.name.length, tokenizer.input);
           } else {
-            if (op.arity === 1 && op.rightToLeftAssociative === RIGHT_TO_LEFT && op.precedence === UNARY_PRECEDENCE_PLUS_ONE && op.name.length > 1 && (op.name === "sin" || op.name === "cos" || op.name === "sen" || op.name === "tan" || op.name === "tg") && Input.startsWith(input, position, EXPONENTIATION.name)) {
+            if (op.arity === 1 && op.rightToLeftAssociative === RIGHT_TO_LEFT && op.precedence === UNARY_PRECEDENCE_PLUS_ONE && op.name.length > 1 &&
+                (op.name === "sin" || op.name === "cos" || op.name === "sen" || op.name === "tan" || op.name === "tg") &&
+                (token.type === 'operator' && token.value === EXPONENTIATION.name || token.type === 'superscript')) {
+              // https://en.wikipedia.org/wiki/Exponentiation#Exponential_notation_for_function_names
+
               // cos^2(x)
               //!new 2017-11-04
               // parse an operator for the exponentiation
-              var exponentiationPosition = position;
-              position = position + EXPONENTIATION.name.length;
-              tmp = parseExpression(input, position, context, isMatrixElement, EXPONENTIATION.precedence, undefined);
-              var middle = tmp.result;
-              position = tmp.position;
-              // parse an operator for the current operator
-              tmp = parseExpression(input, position, context, isMatrixElement, op.precedence, undefined);
-              right = tmp.result;
-              position = tmp.position;
-              operand = EXPONENTIATION.i(op.i(right).addPosition(operatorPosition, op.name.length, input), middle).addPosition(exponentiationPosition, EXPONENTIATION.name.length, input);
+              var exponentiationPosition = tokenizer.position;
+
+              var exponentiationLength = 0;
+              var middle = null;
+              if (token.type === 'superscript') {
+                var superscript = token.value;
+                exponentiationLength = token.value.length;
+                token = nextToken(tokenizer);
+                middle = Expression.Integer.fromString(normalizeSuperscripts(superscript));
+              } else {
+                exponentiationLength = EXPONENTIATION.name.length;
+                token = nextToken(tokenizer);
+                if (token.type !== 'integerLiteral') {
+                  ok = false;
+                } else {
+                  tmp = parseExpression(tokenizer, token, context, EXPONENTIATION.precedence, undefined);
+                  middle = tmp.result;
+                  token = tmp.token;
+                }
+              }
+              if (ok) {
+                // parse an operator for the current operator
+                tmp = parseExpression(tokenizer, token, context, op.precedence, undefined);
+                right = tmp.result;
+                token = tmp.token;
+                operand = EXPONENTIATION.i(op.i(right).addPosition(operatorPosition, op.name.length, tokenizer.input), middle).addPosition(exponentiationPosition, exponentiationLength, tokenizer.input);
+              }
             } else {
-              tmp = parseExpression(input, position, context, isMatrixElement, op.precedence, undefined);
+              tmp = parseExpression(tokenizer, token, context, op.precedence, undefined);
               right = tmp.result;
-              position = tmp.position;
+              token = tmp.token;
               //TODO: fix `1/(2-2)`
               ExpressionParser.startPosition = operatorPosition;
               ExpressionParser.endPosition = operatorPosition + op.name.length;
-              ExpressionParser.input = input;
+              ExpressionParser.input = tokenizer.input;
               if (op.arity === 1) {
                 // left <implicit multiplication> operand
-                operand = op.i(right).addPosition(operatorPosition, op.name.length, input);
+                operand = op.i(right).addPosition(operatorPosition, op.name.length, tokenizer.input);
               } else if (op.arity === 2) {
-                left = op.i(left, right).addPosition(operatorPosition, op.name.length, input);
+                left = op.i(left, right).addPosition(operatorPosition, op.name.length, tokenizer.input);
               } else {
                 throw new RangeError();
               }
             }
           }
         }
-      } else if (left == undefined || precedence < MULTIPLICATION.precedence) {
-        if (firstCharacterCode === "(".charCodeAt(0)) {
-          position = Input.parseCharacter(input, position, "(".charCodeAt(0));
-          tmp = parseExpression(input, position, context, false, 0, undefined);
+      } else if (left == undefined || precedence < MULTIPLICATION.precedence || (precedence === UNARY_PRECEDENCE_PLUS_ONE && isDecimalFraction && token.type === 'symbol')) {
+        if ((tmp = parseDecimalFraction(tokenizer, token, context)) != undefined) {
           operand = tmp.result;
-          position = tmp.position;
-          position = Input.parseCharacter(input, position, ")".charCodeAt(0));
-        } else if (firstCharacterCode === "{".charCodeAt(0)) {
-          position = Input.parseCharacter(input, position, "{".charCodeAt(0));
-          if (Input.getFirst(input, position) === "{".charCodeAt(0)) {
-            tmp = parseMatrix(input, position, context);
+          token = tmp.token;
+          isDecimalFraction = true;
+        } else if (token.type === 'punctuator' && token.value === "(") {
+          token = parsePunctuator(tokenizer, token, "(");
+          tmp = parseExpression(tokenizer, token, context, 0, undefined);
+          operand = tmp.result;
+          token = tmp.token;
+          token = parsePunctuator(tokenizer, token, ")");
+        } else if (token.type === 'punctuator' && token.value === "{") {
+          token = parsePunctuator(tokenizer, token, "{");
+          if (token.type === 'punctuator' && token.value === "{") {
+            tmp = parseMatrix(tokenizer, token, context);
             operand = tmp.result;
-            position = tmp.position;
+            token = tmp.token;
           } else {
-            tmp = parseLaTeXArgument(input, position, context);
+            tmp = parseLaTeXArgument(tokenizer, token, context);
             operand = tmp.result;
-            position = tmp.position;
+            token = tmp.token;
+            token = parsePunctuator(tokenizer, token, "}");
           }
-          position = Input.parseCharacter(input, position, "}".charCodeAt(0));
-        } else if ((tmp = parseDecimalFraction(input, position, context, isMatrixElement)) != undefined) {
+        } else if (token.type === 'punctuator' && (token.value === "\\begin{bmatrix}" ||
+                                                   token.value === "\\begin{vmatrix}" ||
+                                                   token.value === "\\begin{pmatrix}" ||
+                                                   token.value === "\\begin{matrix}")) {
+          var kind = token.value.slice('\\begin{'.length, -1);
+          tmp = parseLaTeXMatrix(tokenizer, token, context, kind);
           operand = tmp.result;
-          position = tmp.position;
-        } else if (firstCharacterCode === "\\".charCodeAt(0) && (Input.startsWith(input, position, "\\begin{pmatrix}") || Input.startsWith(input, position, "\\begin{matrix}"))) {
-          tmp = parseLaTeXMatrix(input, position, context, Input.startsWith(input, position, "\\begin{pmatrix}") ? "{pmatrix}" : "{matrix}");
-          operand = tmp.result;
-          position = tmp.position;
-        } else if ((match = Input.exec(input, position, symbols)) != undefined) {
-          var symbolName = match;
+          token = tmp.token;
+          if (kind === 'vmatrix') {
+            operand = operand.determinant();//!
+          }
+        } else if (token.type === 'symbol') {
+          var symbolName = token.value;
           symbolName = normalizeSubscripts(symbolName);
           symbolName = normalizeGreek(symbolName);
           operand = context.get(symbolName);
-          if (operand == undefined) {
-            //TODO: move to context - ?
-            operand = symbolName === "I" || symbolName === "U" || symbolName === "E" ? new Expression.IdentityMatrix(symbolName) : new Expression.Symbol(symbolName);
-            operand = context.wrap(operand);
-          } else {
-            operand = context.wrap(operand);
-          }
-          position = Input.trimLeft(input, position, match.length);
-        } else if (firstCharacterCode === "|".charCodeAt(0) && left == undefined) {
-          position = Input.parseCharacter(input, position, "|".charCodeAt(0));
-          tmp = parseExpression(input, position, context, isMatrixElement, 0, undefined);
+          operand = context.wrap(operand);
+          token = nextToken(tokenizer);
+        } else if (token.type === 'punctuator' && token.value === "|" && left == undefined) {
+          token = parsePunctuator(tokenizer, token, "|");
+          tmp = parseExpression(tokenizer, token, context, 0, undefined);
           operand = tmp.result;
-          position = tmp.position;
-          position = Input.parseCharacter(input, position, "|".charCodeAt(0));
+          token = tmp.token;
+          token = parsePunctuator(tokenizer, token, "|");
           
           operand = operand.determinant();//!
         } else {
@@ -8432,44 +10616,47 @@ Expression.Degrees.prototype.toMathML = function (options) {
 
       //!TODO: fix
       if (!ok && left != undefined && precedence <= EXPONENTIATION.precedence + (EXPONENTIATION.rightToLeftAssociative === RIGHT_TO_LEFT ? 0 : -1)) {
-        if ((match = Input.exec(input, position, superscripts)) != undefined) {
+        if (token.type === 'superscript') {
           // implicit exponentiation
-          left = EXPONENTIATION.i(left, Expression.Integer.parseInteger(normalizeSuperscripts(match))).addPosition(position, EXPONENTIATION.name.length, input);
-          position = Input.trimLeft(input, position, match.length);
+          //TODO: check position
+          var superscript = token.value;
+          left = EXPONENTIATION.i(left, Expression.Integer.fromString(normalizeSuperscripts(superscript))).addPosition(tokenizer.position - token.value.length, EXPONENTIATION.name.length, tokenizer.input);
+          token = nextToken(tokenizer);
           ok = true;//!
         }
       }
 
-      if (!ok && firstCharacterCode === "\\".charCodeAt(0) && !Input.startsWith(input, position, "\\\\")) { // isAlpha(Input.getFirst(input, position + 1))
-        if (!Input.startsWith(input, position + 1, "end{pmatrix}") && !Input.startsWith(input, position + 1, "end{matrix}")) {
+      if (!ok && token.type === 'operator' && token.value === "\\") { // isAlpha(Input.getFirst(input, position + 1))
         // TODO: LaTeX - ?
         ok = true;
-        position += 1;
-        }
+        token = nextToken(tokenizer);
       }
 
       if (operand != undefined) {
         if (left != undefined) {
           // implied multiplication
-          tmp = parseExpression(input, position, context, isMatrixElement, MULTIPLICATION.precedence, operand);
+          var oldPosition = tokenizer.position;
+          tmp = parseExpression(tokenizer, token, context, MULTIPLICATION.precedence, operand);
           var right1 = tmp.result;
-          var position1 = tmp.position;
-          left = MULTIPLICATION.i(left, right1).addPosition(position, MULTIPLICATION.name.length, input);
-          position = position1;
+          token = tmp.token;
+          left = MULTIPLICATION.i(left, right1).addPosition(oldPosition, MULTIPLICATION.name.length, tokenizer.input);
         } else {
           left = operand;
         }
       }
-      firstCharacterCode = Input.getFirst(input, position);
     }
 
     if (left == undefined) {
-      ExpressionParser.startPosition = position;
-      ExpressionParser.endPosition = position + 1;
-      ExpressionParser.input = input;
-      throw new RangeError("UserError:" + "0");//(!) TODO: "RPN error 2", input
+      ExpressionParser.startPosition = tokenizer.position - token.value.length;
+      ExpressionParser.endPosition = tokenizer.position;
+      ExpressionParser.input = tokenizer.input;
+      if (token.type === 'EOF') {
+        throw new RangeError("UserError: unexpected end of input");//TODO: fix
+      }
+      //TODO: ?
+      throw new RangeError("UserError: unexpected '" + token.value + "'");//TODO: fix
     }
-    return new ParseResult(left, position);
+    return new ParseResult(left, token);
   };
 
   var replaceHanidec = function (code) {
@@ -8553,7 +10740,7 @@ Expression.Degrees.prototype.toMathML = function (options) {
     }
     var c = replaceHanidec(code);
     if (c !== -1) {
-      return {code: c, name: "hanidec"};
+      return {code: '0'.charCodeAt(0) + c, name: "hanidec"};
     }
     return undefined;
   };
@@ -8571,6 +10758,9 @@ Expression.Degrees.prototype.toMathML = function (options) {
     //if (charCode === 0x0425 || charCode === 0x0445) {
     //  return "X";
     //}
+    if (charCode === 0x0422 || charCode === 0x0442) {
+      return "T";
+    }
     if (charCode === 0x2212) {
       return "-";
     }
@@ -8585,7 +10775,8 @@ Expression.Degrees.prototype.toMathML = function (options) {
       return "/";
     }
     if (charCode >= 0xFF01 && charCode <= 0xFF5E) {
-      return normalizeFullwidthForms(charCode);
+      // normalize full-widht forms:
+      return String.fromCharCode(charCode - 0xFF01 + 0x0021);
     }
     if (charCode === 0x060C || charCode === 0x066B) {
       return ",";
@@ -8593,10 +10784,31 @@ Expression.Degrees.prototype.toMathML = function (options) {
     var y = replaceSimpleDigit(charCode);
     if (y != undefined) {
       // TODO: remove
-      if (global.hit != undefined) {
-        global.hit({digit: y.name});
+      if (typeof hit === "function") {
+        hit({digit: y.name});
       }
       return String.fromCharCode(y.code);
+    }
+    if (charCode === 0x2147) {
+      return "e";
+    }
+    if (charCode === 0x2148) {
+      return "i";
+    }
+    if (charCode === 0x2215) {
+      return "/";
+    }
+    if (charCode === 0x2713) {
+      return "\u221A";
+    }
+    if (charCode === 0x2061) {
+      return " ";
+    }
+    if (charCode === 0x2062) {
+      return "*";
+    }
+    if (charCode === 0x2063) {
+      return ",";
     }
     return undefined;
   };
@@ -8607,7 +10819,7 @@ Expression.Degrees.prototype.toMathML = function (options) {
   //input = input.replace(replaceRegExp, replaceFunction); - slow in Chrome
   var replaceSomeChars = function (input) {
     var lastIndex = 0;
-    var result = "";
+    var result = '';
     for (var i = 0; i < input.length; i += 1) {
       var charCode = input.charCodeAt(i);
       if (charCode > 0x007F || charCode === 0x003A) {
@@ -8623,8 +10835,84 @@ Expression.Degrees.prototype.toMathML = function (options) {
     return result;
   };
 
+  var config = [
+    {type: 'integerLiteral', re: null},
+    {type: 'numericLiteral', re: null},
+    {type: 'whitespace', re: whiteSpaces},
+    {type: 'punctuator', re: punctuators},
+    {type: 'operator', re: null},
+    {type: 'symbol', re: symbols},
+    {type: 'vulgarFraction', re: vulgarFractions},
+    {type: 'superscript', re: superscripts},
+    {type: 'OTHER', re: other}
+  ];
+
+  function Token(type, value) {
+    this.type = type;
+    this.value = value;
+  }
+
+  Token.EOF = new Token('EOF', '', null);
+
+  function Tokenizer(input, position, states) {
+    this.input = input;
+    this.position = position;
+    this.states = states;
+  }
+
+  Tokenizer.prototype.next = function () {
+    if (this.position >= this.input.length) {
+      return Token.EOF;
+    }
+    // iteration by object keys is slower (?)
+    for (var i = 0; i < config.length; i += 1) {
+      var c = config[i];
+      var type = c.type;
+      var re = c.re;
+      if (re == null) {
+        if (type === 'integerLiteral') {
+          if (this.states != null && this.states.value === '{}') {
+            re = integerLiteralWithoutComma;
+          } else {
+            re = integerLiteral;
+          }
+        } else if (type === 'numericLiteral') {
+          if (this.states != null && this.states.value === '{}') {
+            re = decimalFractionWithoutComma;
+          } else {
+            re = decimalFraction;
+          }
+        } else if (type === 'operator') {
+          re = operationSearchCache.getRegExp();//?TODO: 
+        }
+      }
+      var tmp = re.exec(this.input.slice(this.position));
+      if (tmp != null) {
+        var value = tmp[0];
+        if (type === 'punctuator') {
+          if (value === '(') {
+            this.states = {previous: this.states, value: '()'};
+          } else if (value === ')') {
+            if (this.states != null && this.states.value === '()') {
+              this.states = this.states.previous;
+            }
+          } else if (value === '{') {
+            this.states = {previous: this.states, value: '{}'};
+          } else if (value === '}') {
+            if (this.states != null && this.states.value === '{}') {
+              this.states = this.states.previous;
+            }
+          }
+        }
+        this.position += value.length;
+        return new Token(type, value);
+      }
+    }
+    throw new TypeError();
+  };
+
   var fs = {};//!TODO: remove!!!
-  
+
   function ExpressionParser() {
   }
 
@@ -8643,60 +10931,69 @@ Expression.Degrees.prototype.toMathML = function (options) {
     //TODO: fix ???
     input = replaceSomeChars(input);
 
-    if (global.hit != undefined && context.getter != undefined) {
+    if (typeof hit === "function" && context.getter != undefined) {
       var re = /[a-z][a-z][a-z\-]+/gi;
       var m = null;
       while ((m = re.exec(input)) != null) {
         var t = m[0];
         if (!(t in fs) && t.indexOf("-") === -1) {
           fs[t] = true;
-          global.hit({fs: t});
+          hit({fs: t});
         }
       }
     }
 
-    var position = 0;
-    position = Input.trimLeft(input, position, 0);
-    var tmp = parseExpression(input, position, context, false, 0, undefined);
-    if (Input.getFirst(input, tmp.position) !== Input.EOF) {
-      ExpressionParser.startPosition = tmp.position;
-      ExpressionParser.endPosition = tmp.position + 1;
+    var tokenizer = new Tokenizer(input, 0, null);
+    var token = nextToken(tokenizer);
+    var tmp = parseExpression(tokenizer, token, context, 0, undefined);
+    token = tmp.token;
+    if (token.type !== 'EOF') {
+      ExpressionParser.startPosition = tokenizer.position - token.value.length;
+      ExpressionParser.endPosition = tokenizer.position;
       ExpressionParser.input = input;
-      throw new RangeError("UserError:" + Input.EOF.toString());// TODO: fix
+      throw new RangeError("UserError: unexpected '" + token.value + "'");
     }
 
     return tmp.result;
   };
+  
+  globalThis.Tokenizer = Tokenizer;
 
   ExpressionParser.startPosition = -1;
   ExpressionParser.endPosition = -1;
   ExpressionParser.input = "";
 
-  var getConstant = function (e) {
-    if (e === "pi" || e === "\u03C0") {
+  var getConstant = function (symbolName) {
+    if (symbolName === "pi" || symbolName === "\u03C0") {
       return Expression.PI;
     }
-    if (e === "e") {
+    if (symbolName === "e") {
       return Expression.E;
     }
-    if (e === "i") {
+    if (symbolName === "i") {
       return Expression.I;
     }
-    return undefined;
+    if (symbolName === "I" || symbolName === "U" || symbolName === "E") {
+      return new Expression.IdentityMatrix(symbolName);
+    }
+    if (symbolName === "circ") { //TODO: ○ - ?
+      return Expression.CIRCLE;
+    }
+    return new Expression.Symbol(symbolName);
   };
 
   ExpressionParser.Context = function (getter, needsWrap) {
     this.getter = getter;
     this.needsWrap = needsWrap == undefined ? true : needsWrap;
   };
-  ExpressionParser.Context.prototype.get = function (e) {
+  ExpressionParser.Context.prototype.get = function (symbolName) {
     if (this.getter != undefined) {
-      var x = this.getter(e);
+      var x = this.getter(symbolName);
       if (x != undefined) {
         return x;
       }
     }
-    return getConstant(e);
+    return getConstant(symbolName);
   };
   ExpressionParser.Context.prototype.wrap = function (e) {
     if (!this.needsWrap) {
@@ -8712,43 +11009,39 @@ Expression.Degrees.prototype.toMathML = function (options) {
       return a.transformNoAnswerExpression(denotation, b);
     });
     //operations.push(newOperation);
-    operationSearchCache.append(newOperation.name.charCodeAt(0), newOperation);
+    operationSearchCache.append(newOperation);
   };
 
-  ExpressionParser.addDenotations = function (operationName, denotations) {
-    var os = operationSearchCache.getAll(operationName.charCodeAt(0));
-    var operation = undefined;
-    var i = -1;
-    while (++i < os.length) {
-      var o = os[i];
-      if (o.name === operationName) {
-        operation = o;
-      }
-    }
-    var added = {};
-    added[operationName] = true;
-    for (var key in denotations) {
-      if (Object.prototype.hasOwnProperty.call(denotations, key)) {
-        var denotation = denotations[key];
-        if (added[denotation] == undefined) {
-          added[denotation] = true;
-          var newOperation = new Operator(denotation, operation.arity, operation.rightToLeftAssociative, operation.precedence, operation.i);
-          //operations.push(newOperation);
-          operationSearchCache.append(newOperation.name.charCodeAt(0), newOperation);
+  ExpressionParser.addDenotations = function (denotationsByOperation) {
+    for (var operationName in denotationsByOperation) {
+      if (Object.prototype.hasOwnProperty.call(denotationsByOperation, operationName)) {
+        var denotations = denotationsByOperation[operationName];
+        var operation = operationSearchCache.getByName(operationName);
+        var added = {};
+        added[operationName] = true;
+        for (var key in denotations) {
+          if (Object.prototype.hasOwnProperty.call(denotations, key)) {
+            var denotation = denotations[key];
+            if (added[denotation] == undefined) {
+              added[denotation] = true;
+              var newOperation = new Operator(denotation, operation.arity, operation.rightToLeftAssociative, operation.precedence, operation.i);
+              //operations.push(newOperation);
+              operationSearchCache.append(newOperation);
+            }
+          }
         }
       }
     }
   };
 
-  global.ExpressionParser = ExpressionParser;
+  self.ExpressionParser = ExpressionParser;
 
-}(this));
+})();
+(function () {
+"use strict";
+  
+  
 
-/*global Expression*/
-
-
-(function (global) {
-  "use strict";
   function PolynomialTerm(degree, coefficient) {
     if (degree < 0) {
       throw new RangeError();
@@ -8809,13 +11102,13 @@ Expression.Degrees.prototype.toMathML = function (options) {
     return Expression.ZERO;
   };
 
-  // Polynom([a0, a1, a2, ...., an]);
+  // Polynomial([a0, a1, a2, ...., an]);
   // an*x^n+ an-1 x ^n-1 +... + a0
-  function Polynom(a) {
+  function Polynomial(a) {
     this.a = a;
   }
 
-  Polynom.of = function () {
+  Polynomial.of = function () {
     var newData = new PolynomialData(arguments.length);
     for (var i = 0; i < arguments.length; i += 1) {
       var a = arguments[i];
@@ -8823,9 +11116,9 @@ Expression.Degrees.prototype.toMathML = function (options) {
         newData.add(i, a);
       }
     }
-    return new Polynom(newData.trim());
+    return new Polynomial(newData.trim());
   };
-  Polynom.from = function (array) {
+  Polynomial.from = function (array) {
     var newData = new PolynomialData(array.length);
     for (var i = 0; i < array.length; i += 1) {
       var a = array[i];
@@ -8833,25 +11126,25 @@ Expression.Degrees.prototype.toMathML = function (options) {
         newData.add(i, a);
       }
     }
-    return new Polynom(newData.trim());
+    return new Polynomial(newData.trim());
   };
 
-  Polynom.ZERO = Polynom.of();
+  Polynomial.ZERO = Polynomial.of();
 
-  Polynom.prototype.getDegree = function () {
+  Polynomial.prototype.getDegree = function () {
     return this.a.length === 0 ? -1 : this.a.degree(this.a.length - 1);
   };
-  Polynom.prototype.getCoefficient = function (degree) {
+  Polynomial.prototype.getCoefficient = function (degree) {
     if (degree > this.getDegree()) {
       throw new RangeError();
     }
     return this.a.getCoefficient(degree);
   };
-  Polynom.prototype.getLeadingCoefficient = function () {
+  Polynomial.prototype.getLeadingCoefficient = function () {
     return this.a.length === 0 ? Expression.ZERO : this.a.coefficient(this.a.length - 1);
   };
 
-  Polynom.prototype.map = function (mapFunction) {//?
+  Polynomial.prototype.map = function (mapFunction) {//?
     var newData = new PolynomialData(this.a.length);
     for (var i = 0; i < this.a.length; i += 1) {
       var coefficient = this.a.coefficient(i);
@@ -8861,10 +11154,10 @@ Expression.Degrees.prototype.toMathML = function (options) {
         newData.add(degree, c);
       }
     }
-    return new Polynom(newData.trim());
+    return new Polynomial(newData.trim());
   };
 
-  Polynom.prototype.equals = function (p) {
+  Polynomial.prototype.equals = function (p) {
     var i = this.a.length;
     if (i !== p.a.length) {
       return false;
@@ -8877,7 +11170,7 @@ Expression.Degrees.prototype.toMathML = function (options) {
     return true;
   };
 
-  Polynom.prototype.add = function (p) {
+  Polynomial.prototype.add = function (p) {
     var i = 0;
     var j = 0;
     var newData = new PolynomialData(this.a.length + p.a.length);
@@ -8907,14 +11200,14 @@ Expression.Degrees.prototype.toMathML = function (options) {
       newData.add(p.a.degree(j), p.a.coefficient(j));
       j += 1;
     }
-    return new Polynom(newData.trim());
+    return new Polynomial(newData.trim());
   };
 
-  Polynom.prototype.multiply = function (p) {
+  Polynomial.prototype.multiply = function (p) {
     if (this.a.length === 0 || p.a.length === 0) {
-      return Polynom.ZERO;
+      return Polynomial.ZERO;
     }
-    var result = Polynom.ZERO;
+    var result = Polynomial.ZERO;
     for (var i = 0; i < this.a.length; i += 1) {
       var xd = this.a.degree(i);
       var xc = this.a.coefficient(i);
@@ -8924,28 +11217,28 @@ Expression.Degrees.prototype.toMathML = function (options) {
         var yc = p.a.coefficient(j);
         newData.add(xd + yd, xc.multiply(yc));
       }
-      result = result.add(new Polynom(newData.trim()));
+      result = result.add(new Polynomial(newData.trim()));
     }
     return result;
   };
 
-  Polynom.prototype.shift = function (n) { // *= x**n, n >= 0
+  Polynomial.prototype.shift = function (n) { // *= x**n, n >= 0
     if (n < 0) {
-      throw new RangeError();
+      throw new TypeError();
     }
     var newData = new PolynomialData(this.a.length);
     for (var i = 0; i < this.a.length; i += 1) {
       newData.add(this.a.degree(i) + n, this.a.coefficient(i));
     }
-    return new Polynom(newData.trim());
+    return new Polynomial(newData.trim());
   };
 
-  Polynom.prototype.divideAndRemainder = function (p, w) {
+  Polynomial.prototype.divideAndRemainder = function (p, w) {
     w = w || undefined;
-    if (p.equals(Polynom.ZERO)) {
+    if (p.equals(Polynomial.ZERO)) {
       throw new RangeError("ArithmeticException");
     }
-    var quotient = Polynom.ZERO;
+    var quotient = Polynomial.ZERO;
     var remainder = this;
     while (remainder.getDegree() >= p.getDegree()) {
       var n = remainder.getDegree() - p.getDegree();
@@ -8963,14 +11256,61 @@ Expression.Degrees.prototype.toMathML = function (options) {
           throw new RangeError();
         }
       }
-      var pq = Polynom.of(q);
+      var pq = Polynomial.of(q);
       quotient = quotient.add(pq.shift(n));
       remainder = remainder.subtract(p.multiply(pq).shift(n));
+      if (remainder.getDegree() - p.getDegree() === n) {
+        // to avoid the infite loop
+        throw new TypeError("there is a some problem with the expression evaluation");//!
+      }
     }
     return {quotient: quotient, remainder: remainder};
   };
 
-  Polynom.prototype.calcAt = function (point) {//!!!
+  Polynomial.pseudoRemainder = function (x, y) {
+    var lcg = y.getLeadingCoefficient();
+    var n = x.getDegree() - y.getDegree();
+    // assertion
+    if (n < 0) {
+      throw new RangeError();
+    }
+    var sx = x.multiply(Polynomial.of(Expression.pow(lcg, n).multiply(lcg)));
+    return sx.divideAndRemainder(y, "throw").remainder;
+  };
+
+  Polynomial.polynomialGCD = function (a, b) {
+    //TODO: fix (place condition for degrees earlier - ?)
+    if (a.getDegree() < b.getDegree()) {
+      //!!!
+      var tmp = a;
+      a = b;
+      b = tmp;
+    }
+
+    var contentA = a.getContent();
+    var contentB = b.getContent();
+    var ppA = a.divideAndRemainder(Polynomial.of(contentA), "throw").quotient;
+    var ppB = b.divideAndRemainder(Polynomial.of(contentB), "throw").quotient;
+    var A = ppA;
+    var B = ppB;
+    while (!B.equals(Polynomial.ZERO)) {
+      var r = Polynomial.pseudoRemainder(A, B);
+      //! 2018-05-12
+      if (!r.equals(Polynomial.ZERO)) {
+        // https://en.wikipedia.org/wiki/Polynomial_greatest_common_divisor#Primitive_pseudo-remainder_sequence
+        // ExpressionParser.parse("(x^8+x^6-3x^4-3x^3+8x^2+2x-5)/(3x^6+5x^4-4x^2-9x+21)")
+        r = r.divideAndRemainder(Polynomial.of(r.getContent()), "throw").quotient;
+        //console.log(r.toString());
+      }
+      //!
+      A = B;
+      B = r;
+    }
+    var c = contentA.gcd(contentB);
+    return Polynomial.of(c).multiply(A.divideAndRemainder(Polynomial.of(A.getContent()), "throw").quotient);
+  };
+
+  Polynomial.prototype.calcAt = function (point) {//!!!
     var n = Expression.ZERO;
     var lastDegree = -1;
     var i = this.a.length;
@@ -8988,7 +11328,7 @@ Expression.Degrees.prototype.toMathML = function (options) {
     return n;
   };
 
-  Polynom.prototype.getContent = function () {
+  Polynomial.prototype.getContent = function () {
     if (this.a.length === 0) {
       throw new RangeError();
     }
@@ -9007,24 +11347,24 @@ Expression.Degrees.prototype.toMathML = function (options) {
 
   // add, multiply, divideAndRemainder
 
-  Polynom.prototype.negate = function () {
+  Polynomial.prototype.negate = function () {
     //TODO: fix
     return this.map(function (coefficient, degree) {
       return coefficient.negate();
     });
   };
 
-  Polynom.prototype.subtract = function (l) {
+  Polynomial.prototype.subtract = function (l) {
     return this.add(l.negate());
   };
 
-  Polynom.prototype.scale = function (x) {
+  Polynomial.prototype.scale = function (x) {
     return this.map(function (coefficient, degree) {
       return coefficient.multiply(x);
     });
   };
 
-  Polynom.toPolynomial = function (e, v) {
+  Polynomial.toPolynomial = function (e, v) {
     if (e instanceof Expression.Division) {
       throw new RangeError();
     }
@@ -9032,35 +11372,60 @@ Expression.Degrees.prototype.toMathML = function (options) {
     var newData = new PolynomialData(coefficients.length);
     for (var i = 0; i < coefficients.length; i += 1) {
       var x = coefficients[i];
-      var d = Number.parseInt(x.degree.toString(), 10);
+      var d = x.degree.toNumber();
       var c = x.coefficient;
       newData.add(d, c);
     }
-    return new Polynom(newData.trim());
+    return new Polynomial(newData.trim());
   };
 
-  Polynom.prototype.toExpression = function (variableSymbol) {
+  Polynomial.prototype.toExpression = function (variableSymbol) {
     var i = this.a.length;
     var result = undefined;
     while (--i >= 0) {
       var degree = this.a.degree(i);
       var coefficient = this.a.coefficient(i);
-      var v = degree === 0 ? undefined : (degree === 1 ? variableSymbol : new Expression.Exponentiation(variableSymbol, Expression.Integer.parseInteger(degree.toString())));
+      var v = degree === 0 ? undefined : (degree === 1 ? variableSymbol : new Expression.Exponentiation(variableSymbol, Expression.Integer.fromNumber(degree)));
       var current = v == undefined ? coefficient : (coefficient.equals(Expression.ONE) ? v : new Expression.Multiplication(coefficient, v));
       result = result == undefined ? current : new Expression.Addition(result, current);
     }
     return result == undefined ? Expression.ZERO : result;
   };
 
-  Polynom.prototype.doRationalRootTest = function (callback) {
+  // return a first founded root to simplify and as the next call may be called with reduced coefficients
+  Polynomial.prototype.doRationalRootTest = function () {
     var np = this;
     var an = np.getLeadingCoefficient();
     var a0 = np.getCoefficient(0);
 
     //TODO: http://en.wikipedia.org/wiki/Polynomial_remainder_theorem
-    //var fp1 = getBigInteger(np.calcAt(1));
-    //var fm1 = getBigInteger(np.calcAt(-1));
 
+    // http://scask.ru/g_book_mav.php?id=26
+    var hasIntegerCoefficients = np._hasIntegerCoefficients();
+    // f(k) = -q(a)(a - k)
+    var filter = [];
+    if (hasIntegerCoefficients) {
+      if (np.calcAt(Expression.ONE).equals(Expression.ZERO)) {
+        return Expression.ONE;
+      }
+      filter.push({k: Expression.ONE, fk: np.calcAt(Expression.ONE)});
+      if (np.calcAt(Expression.ONE.negate()).equals(Expression.ZERO)) {
+        return Expression.ONE.negate();
+      }
+      filter.push({k: Expression.ONE.negate(), fk: np.calcAt(Expression.ONE.negate())});
+    }
+
+    /*
+    TODO: 
+    k = k
+    f(k) = fk
+    t = x + k
+    x = t - k
+    f(t) = f(x + k) = an * x**n + ... + f(k)
+    */
+    
+
+    var result = null;
     // p/q
     //TODO: forEach -> some ?
     Expression.everyDivisor(a0, function (p) {
@@ -9069,50 +11434,147 @@ Expression.Degrees.prototype.toMathML = function (options) {
         while ((sign += 2) < 3) {
           var sp = sign === -1 ? p.negate() : p;
 
-          //if (// fp1.remainder(sp.subtract(q)).equals(ZERO) &&
-                // fm1.remainder(sp.add(q)).equals(ZERO) &&
-                // sp.gcd(q).equals(ONE)) {//?
-            var x = Polynom.of(sp.negate(), q);
-            var z = np.divideAndRemainder(x, "undefined");
-            while (z != undefined && z.remainder.equals(Polynom.ZERO)) {
-              np = z.quotient;
-              np = np.scale(q);
-              if (!callback(sp, q)) {
-                np = undefined;
-                return false;
-              }
-              if (np.getDegree() === 1) {
-                sp = np.getCoefficient(0).negate();
-                q = np.getCoefficient(1);
-                np = Polynom.of(q);
-                if (!callback(sp, q)) {
-                  np = undefined;
-                  return false;
-                }
-                return false;// or divide
-              }
-              if (np.getDegree() < 1) {
-                return false;
-              }
-              //TODO: !!!
-              //an = np.getLeadingCoefficient();//!
-              //a0 = np.getCoefficient(0);//!
+          var i = 0;
+          while (i < filter.length && !filter[i].k.multiply(sp).subtract(q).equals(Expression.ZERO) && filter[i].fk.remainder(filter[i].k.multiply(sp).subtract(q)).equals(Expression.ZERO)) {
+            i += 1;
+          }
+          var filteredOut = i < filter.length;
 
-              // fp1 = fp1.divide(q.subtract(sp));
-              // fm1 = fm1.divide(q.negate().subtract(sp));
-              z = np.divideAndRemainder(x, "undefined");
+          if (//sp.gcd(q).equals(Expression.ONE) &&
+              !filteredOut) {//?
+            var x = Polynomial.of(sp.negate(), q);
+            var z = np.divideAndRemainder(x, "undefined");
+            if (z != undefined && z.remainder.equals(Polynomial.ZERO)) {
+              result = sp.divide(q);
+              return false;
             }
-          //}
+          }
         }
         return true;
       });
     });
 
-    return np;
+    return result;
+  };
+  
+  Polynomial.prototype._hasIntegerCoefficients = function () {
+    for (var i = 0; i <= this.getDegree(); i += 1) {
+      if (!(this.getCoefficient(i) instanceof Expression.Integer)) {
+        return false;
+      }
+    }
+    return true;
   };
 
-  Polynom.prototype.getroots = function (callback) {
-    //TODO: merge global.hit and callback
+  Polynomial.prototype._hasIntegerLikeCoefficients = function () {
+    var isIntegerLike = function (c) {
+      if (c instanceof Expression.Integer) {
+        return true;
+      }
+      if (c instanceof Expression.Symbol) {
+        return true;
+      }
+      if (c instanceof Expression.Addition) {
+        return isIntegerLike(c.a) && isIntegerLike(c.b);
+      }
+      if (c instanceof Expression.Multiplication) {
+        return isIntegerLike(c.a) && isIntegerLike(c.b);
+      }
+      if (c instanceof Expression.Exponentiation) {
+        return isIntegerLike(c.a) && c.b instanceof Expression.Integer;
+      }
+      return false;
+    };
+    var integerLikeCoefficients = true;
+    for (var i = 0; i <= this.getDegree(); i += 1) {
+      integerLikeCoefficients = integerLikeCoefficients && isIntegerLike(this.getCoefficient(i));
+    }
+    return integerLikeCoefficients;
+  };
+
+  Polynomial.prototype._getFactorByKroneckersMethod = function () {
+    // https://ru.wikipedia.org/wiki/%D0%9C%D0%B5%D1%82%D0%BE%D0%B4_%D0%9A%D1%80%D0%BE%D0%BD%D0%B5%D0%BA%D0%B5%D1%80%D0%B0
+    // https://ru.wikipedia.org/wiki/%D0%98%D0%BD%D1%82%D0%B5%D1%80%D0%BF%D0%BE%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B9_%D0%BC%D0%BD%D0%BE%D0%B3%D0%BE%D1%87%D0%BB%D0%B5%D0%BD_%D0%9B%D0%B0%D0%B3%D1%80%D0%B0%D0%BD%D0%B6%D0%B0
+    // https://en.wikipedia.org/wiki/Vandermonde_matrix
+    var np = this;
+    if (!np._hasIntegerLikeCoefficients()) {
+      return undefined;
+    }
+    var n = np.getDegree();
+    var ys = new Array(n);
+    var total = 1;
+    for (var i = 0; i <= Math.floor(n / 2); i += 1) {
+      var bi = Expression.Integer.fromNumber(i);
+      var y = np.calcAt(bi);
+      if (y.equals(Expression.ZERO)) {
+        return Polynomial.of(bi.negate(), Expression.ONE);
+      }
+      var attachNegative = function (array) {
+        var result = new Array(array.length * 2);
+        for (var i = 0; i < array.length; i += 1) {
+          result[i * 2] = array[i];
+          result[i * 2 + 1] = array[i].negate();
+        }
+        return result;
+      };
+      var divisors = [];
+      Expression.everyDivisor(y, function (d) {
+        divisors.push(d);
+        return true;
+      });
+      // let the first be positive as two sets with different signs give polynomials that differ only in sign of coefficients
+      ys[i] = i === 0 ? divisors : attachNegative(divisors);
+      total *= ys[i].length;
+      var V = Matrix.Zero(i + 1, i + 1).map(function (e, i, j) {
+        return Expression.pow(Expression.Integer.fromNumber(i), j);
+      });
+      var inv = V.inverse();
+      //scale?
+      inv = inv.scale(V.determinant());
+      //?
+      var u = new Array(i + 1);
+      for (var j = 0; j < i + 1; j += 1) {
+        u[j] = 0;
+      }
+      u[0] = -1;
+      for (var j = 0; j < total; j += 1) {
+        var k = 0;
+        u[k] += 1;
+        while (u[k] === ys[k].length) {
+          u[k] = 0;
+          k += 1;
+          u[k] += 1;
+        }
+        var y = Matrix.Zero(i + 1, 1).map(function (e, i, j) {
+          return ys[i][u[i]];
+        });
+        var s = inv.multiply(y);
+        var polynomialFromVector = function (s) {
+          var c = new Array(s.rows());
+          for (var j = 0; j < s.rows(); j += 1) {
+            c[j] = s.e(j, 0);
+          }
+          return Polynomial.from(c);
+        };
+        var g = polynomialFromVector(s);
+        //if (g.getDegree() > 0 && np.divideAndRemainder(g).remainder.equals(Polynomial.ZERO)) {
+        //  return g;
+        //}
+        if (g.getDegree() > 0) {
+          var gc = g.getContent();
+          g = g.scale(gc.getDenominator()).divideAndRemainder(Polynomial.of(gc.getNumerator()), "throw").quotient;
+          var t = np.divideAndRemainder(g, "undefined");
+          if (t != undefined && t.remainder.equals(Polynomial.ZERO)) {
+            return g;
+          }
+        }
+      }
+    }
+    return undefined;
+  };
+
+  Polynomial.prototype.getroots = function (callback) {
+    //TODO: merge hit and callback
     callback = callback || undefined;
     var np = this;
 
@@ -9120,7 +11582,7 @@ Expression.Degrees.prototype.toMathML = function (options) {
 
 
     //!new 2018-12-24
-    //TODO: fix (?Polynom#getContent()?)
+    //TODO: fix (?Polynomial#getContent()?)
       var t = Expression.ZERO;
       while (t != null) {
         var t = Expression.getConjugate(np.getCoefficient(np.getDegree()));
@@ -9132,21 +11594,21 @@ Expression.Degrees.prototype.toMathML = function (options) {
 
     var content = np.getContent();
     if (!content.equals(Expression.ONE)) {
-      np = np.scale(content.getDenominator()).divideAndRemainder(Polynom.of(content.getNumerator()), "throw").quotient;
-      //np = np.divideAndRemainder(Polynom.of(content), "throw").quotient;
+      np = np.scale(content.getDenominator()).divideAndRemainder(Polynomial.of(content.getNumerator()), "throw").quotient;
+      //np = np.divideAndRemainder(Polynomial.of(content), "throw").quotient;
     }
     
     
 
     // x = 0
     while (np.getCoefficient(0).equals(Expression.ZERO)) {
-      np = np.divideAndRemainder(Polynom.of(Expression.ZERO, Expression.ONE), "throw").quotient;
+      np = np.divideAndRemainder(Polynomial.of(Expression.ZERO, Expression.ONE), "throw").quotient;
       roots.push(Expression.ZERO);
     }
     if ((!content.equals(Expression.ONE) && !content.equals(Expression.ONE.negate())) || roots.length > 0) {
       if (roots.length > 0) {
-        if (global.hit != undefined) {
-          global.hit({getroots: {special: "0"}});
+        if (typeof hit === "function") {
+          hit({getroots: {special: "0"}});
         }
       }
       if (callback != undefined) {
@@ -9156,9 +11618,9 @@ Expression.Degrees.prototype.toMathML = function (options) {
 
     if (np.getDegree() === 1) {
       roots.push(np.getCoefficient(0).negate().divide(np.getCoefficient(1)));
-      np = Polynom.of(np.getCoefficient(1));
-      if (global.hit != undefined) {
-        global.hit({getroots: {linear: ""}});
+      np = Polynomial.of(np.getCoefficient(1));
+      if (typeof hit === "function") {
+        hit({getroots: {linear: ""}});
       }
       if (callback != undefined) {
         callback({content: content, roots: roots, newPolynomial: np, type: "solveLinearEquation"});
@@ -9173,8 +11635,19 @@ Expression.Degrees.prototype.toMathML = function (options) {
         return sa1 == undefined || sb1 == undefined ? undefined : sa1.divide(sb1);
       }
       if (x instanceof Expression.Exponentiation) {
-        var N = Expression.Integer.parseInteger(n.toString());
-        return x.b.remainder(N).equals(Expression.ZERO) ? x.a.pow(x.b.divide(N)) : undefined;
+        var N = Expression.Integer.fromNumber(n);
+        if (x.b instanceof Expression.Integer) {
+          if (x.b.remainder(N).equals(Expression.ZERO)) {
+            return x.a.pow(x.b.divide(N));
+          }
+          //return undefined;
+        }
+        if (x.a instanceof Expression.Integer || x.a === Expression.E) {//?
+          return x.a.pow(x.b.divide(N));
+        }
+        if (x.b instanceof Expression.Division && x.b.a instanceof Expression.Integer && x.b.a.remainder(N).equals(Expression.ZERO)) {//TODO: 
+          return x.a.pow(x.b.divide(N));
+        }
       }
       if (x instanceof Expression.Multiplication) {
         var sa = nthRootInternal(n, x.a);
@@ -9186,7 +11659,7 @@ Expression.Degrees.prototype.toMathML = function (options) {
         if (n === 2) {
           var m = x.real.multiply(x.real).add(x.imaginary.multiply(x.imaginary)).squareRoot();
           var g = nthRootInternal(2, x.real.add(m).divide(Expression.TWO));
-          var d = nthRootInternal(2, x.real.negate(m).add(m).divide(Expression.TWO));
+          var d = nthRootInternal(2, x.real.negate().add(m).divide(Expression.TWO));
           if (g != undefined && d != undefined) {
             var result = g.add((x.imaginary.compareTo(Expression.ZERO) < 0 ? d.negate() : d).multiply(Expression.I));
             return result;
@@ -9211,7 +11684,9 @@ Expression.Degrees.prototype.toMathML = function (options) {
         var e = 0;
         var result = Expression.ONE;
         var rest = Expression.ONE;
-        Expression.everySimpleDivisor(x, function (f) {
+        var t = x;
+        while (!t.equals(Expression.ONE) && !t.equals(Expression.ONE.negate())) {
+          var f = Expression.simpleDivisor(t);
           if (e === 0) {
             lastFactor = f;
             e += 1;
@@ -9226,11 +11701,14 @@ Expression.Degrees.prototype.toMathML = function (options) {
             lastFactor = f;
             e = 1;
           }
-          return result != undefined;
-        });
+          t = t.divide(f);
+        }
         if (result !== Expression.ONE) {
           if (e !== 0) {
             rest = rest.multiply(Expression.pow(lastFactor, e));
+          }
+          if (t.equals(Expression.ONE.negate())) {
+            rest = rest.multiply(t);
           }
           var rn = nthRootInternal(n, rest);
           if (rn != undefined) {
@@ -9238,22 +11716,39 @@ Expression.Degrees.prototype.toMathML = function (options) {
           }
         }
       }
+      if (x instanceof Expression.Exponentiation && x.a instanceof Expression.Symbol) {
+        var b = x.b.divide(Expression.Integer.fromNumber(n));
+        return b.equals(Expression.ONE) ? x.a : new Expression.Exponentiation(x.a, b);
+      }
+      if (!Expression.isConstant(x) && x.isNegative() && (n === 2 || n % 2 !== 0)) {
+        x = x.negate();
+        var c = nthRootInternal(n, x);
+        return c == null ? null : Expression.ONE.negate()._nthRoot(n).multiply(c);
+      }
+      if ((x instanceof Expression.Integer || x instanceof Expression.Complex) && x.isNegative() && n % 2 === 0) {//?
+        var c = x instanceof Expression.Integer ? x._nthRoot(2) : nthRootInternal(2, x);
+        return c == null ? null : nthRootInternal(n / 2, c);
+      }
       var y = undefined;
       try {
         y = x._nthRoot(n);
       } catch (error) {
         //TODO:
+        console.error(error);
       }
       return y;
     };
 
     var nthRoot = function (n, x, np) {
+      if (n === 1) {
+        return x;
+      }
       var y = nthRootInternal(n, x);
       if (y == undefined) {
         if (!(x instanceof Expression.Integer)) {
-          self.setTimeout(function () {
-            throw new RangeError((n === 2 ? "squareRoot" : (n === 3 ? "cubeRoot" : n + "-root")) + ":" + x.toString() + ":" + np.toString());
-          }, 0);
+          if (typeof hit === "function") {
+            hit({nthRoot: (n === 2 ? "squareRoot" : (n === 3 ? "cubeRoot" : n + "-root")) + ":" + x.toString() + ":" + np.toString()});
+          }
         }
       }
       return y;
@@ -9266,9 +11761,7 @@ Expression.Degrees.prototype.toMathML = function (options) {
       } : undefined);
       for (var i = 0; i < rs.length; i += 1) {
         roots.push(rs[i]);
-        np = np.divideAndRemainder(Polynom.of(rs[i].negate(), Expression.ONE)).quotient;
       }
-      return np;
     };
 
     if (np.getDegree() >= 2) {
@@ -9283,11 +11776,11 @@ Expression.Degrees.prototype.toMathML = function (options) {
       }
       if (g >= 2) {
         var allZeros = g === np.getDegree();
-        if (global.hit != undefined) {
+        if (typeof hit === "function") {
           if (g === np.getDegree()) {
-            global.hit({getroots: {allZeros: ""}});
+            hit({getroots: {allZeros: ""}});
           } else {
-            global.hit({getroots: g % 2 === 0 ? (np.getDegree() === 4 ? {biquadratic: ""} : {even: ""}) : {xyz: np.toString()}});
+            hit({getroots: g % 2 === 0 ? (np.getDegree() === 4 ? {biquadratic: ""} : {even: ""}) : {xyz: np.toString()}});
           }
         }
         // t = x^g
@@ -9297,28 +11790,40 @@ Expression.Degrees.prototype.toMathML = function (options) {
           newData[k] = np.getCoefficient(i);
           k += 1;
         }
-        var q = Polynom.from(newData);
+        var q = Polynomial.from(newData);
         var qRoots = q.getroots();
         var n = np.getDegree();//TODO: 2018-02-04
-        var ok = false;//?
+        //var ok = false;//?
         for (var k = 0; k < qRoots.length; k += 1) {
           var qRoot = qRoots[k];
           var s = nthRoot(g, qRoot, np);
           if (s != undefined) {
+            var d = Polynomial.of(Expression.ONE).shift(g).add(Polynomial.of(s.negate()));
+            if ((!allZeros || g > 4) && g <= 24 && ((17896830 >> g) & 1) === 1) {
+              var c = Expression.E.pow(Expression.I.multiply(Expression.TWO.multiply(Expression.PI)).divide(Expression.Integer.fromNumber(g)));
+              for (var i = 0; i < g; i += 1) {
+                var root = Expression.pow(c, i).multiply(s);
+                roots.push(root);
+              }
+            } else {
             roots.push(s);
-            np = np.divideAndRemainder(Polynom.of(s.negate(), Expression.ONE)).quotient;
+            var d = Polynomial.of(s.negate(), Expression.ONE);
             if (g % 2 === 0) {
               roots.push(s.negate());
-              np = np.divideAndRemainder(Polynom.of(s, Expression.ONE)).quotient;
+              d = Polynomial.of(nthRoot(g / 2, qRoot, np).negate(), Expression.ZERO, Expression.ONE);
             }
+            }
+            np = np.divideAndRemainder(d).quotient;
           }
-          ok = ok || Expression.has(qRoot, Expression.Complex);//?
+          //ok = ok || Expression.has(qRoot, Expression.Complex);//?
         }
         if (callback != undefined) {
-          callback({content: content, roots: roots, newPolynomial: np, type: "t = x^g", g: g, allZeros: allZeros});//TODO: ?
+          var type = allZeros ? (g === 2 ? "applyDifferenceOfSquaresRule" : (g === 3 ? "applyDifferenceOfCubesRule" : "applyDifferenceOfNthPowersRule")) : "t = x^g";
+          callback({content: content, roots: roots, newPolynomial: np, type: type, g: g});//TODO: ?
         }
-        if (n !== np.getDegree() && ok) {
-          np = continueWithNewPolynomial(roots, np);
+        var ok = true;
+        if (n !== np.getDegree() && ok && np.getDegree() > 0) {
+          continueWithNewPolynomial(roots, np);
         }
         return roots;
       }
@@ -9331,16 +11836,17 @@ Expression.Degrees.prototype.toMathML = function (options) {
       var c = np.getCoefficient(0);
 
       var D = b.multiply(b).subtract(Expression.TWO.multiply(Expression.TWO).multiply(a).multiply(c));
+      D = D.simplifyExpression();
       var sD = nthRoot(2, D, np);
-      if (global.hit != undefined) {
-        global.hit({getroots: {quadratic: (sD == undefined ? (D instanceof Expression.Integer ? D.compareTo(Expression.ZERO) : "?" + D.toString()) : "OK")}});
+      if (typeof hit === "function") {
+        hit({getroots: {quadratic: (sD == undefined ? (D instanceof Expression.Integer ? D.compareTo(Expression.ZERO) : "?" + D.toString()) : "OK")}});
       }
       if (sD != undefined) {
         var x1 = b.negate().subtract(sD).divide(Expression.TWO.multiply(a));
         var x2 = b.negate().add(sD).divide(Expression.TWO.multiply(a));
         roots.push(x1);
         roots.push(x2);
-        np = Polynom.of(a);
+        np = Polynomial.of(a);
         if (callback != undefined) {
           callback({content: content, roots: roots, newPolynomial: np, type: "solveQuadraticEquation"});
         }
@@ -9350,87 +11856,75 @@ Expression.Degrees.prototype.toMathML = function (options) {
 
     //TODO: odd degrees ?
     if (np.getDegree() >= 4 && np.getDegree() % 2 === 0) {
-      try {
-        var middle = Math.floor(np.getDegree() / 2);
-        var j = 1;
-        while (j < middle + 1 && np.getCoefficient(middle + j).equals(Expression.ZERO) && np.getCoefficient(middle - j).equals(Expression.ZERO)) {
-          j += 1;
+      var middle = Math.floor(np.getDegree() / 2);
+      var j = 1;
+      while (j < middle + 1 && np.getCoefficient(middle + j).equals(Expression.ZERO) && np.getCoefficient(middle - j).equals(Expression.ZERO)) {
+        j += 1;
+      }
+      if (j < middle + 1 && !np.getCoefficient(middle + j).equals(Expression.ZERO) && !np.getCoefficient(middle - j).equals(Expression.ZERO)) {
+        var jj = Expression.Integer.fromNumber(j);
+        var mj = np.getCoefficient(middle + j).divide(np.getCoefficient(middle - j));
+        var isQuasiPalindromic = true;
+        for (var i = 2; i < middle + 1; i += 1) {
+          isQuasiPalindromic = isQuasiPalindromic && np.getCoefficient(middle + i).pow(jj).subtract(np.getCoefficient(middle - i).pow(jj).multiply(mj.pow(Expression.Integer.fromNumber(i)))).equals(Expression.ZERO);
         }
-        if (j < middle + 1 && !np.getCoefficient(middle + j).equals(Expression.ZERO) && !np.getCoefficient(middle - j).equals(Expression.ZERO)) {
-          var jj = Expression.Integer.parseInteger(j.toString());
-          var mj = np.getCoefficient(middle + j).divide(np.getCoefficient(middle - j));
-          var isQuasiPalindromic = true;
-          for (var i = 2; i < middle + 1; i += 1) {
-            isQuasiPalindromic = isQuasiPalindromic && np.getCoefficient(middle + i).pow(jj).subtract(np.getCoefficient(middle - i).pow(jj).multiply(mj.pow(Expression.Integer.parseInteger(i.toString())))).equals(Expression.ZERO);
+        if (isQuasiPalindromic) {
+          //TODO: fix
+          if (typeof hit === "function") {
+            hit({getroots: {quasiPalindromic: np.getDegree()}});
           }
-          if (isQuasiPalindromic) {
-            //TODO: fix
-            if (global.hit != undefined) {
-              global.hit({getroots: {quasiPalindromic: np.getDegree()}});
-            }
-          }
-          if (isQuasiPalindromic && np.getDegree() <= 53) { // Math.log2(9007199254740991 + 1)
-            var substitute = function (m, np) { // t = mx + 1 / x
-              // https://stackoverflow.com/a/15302448/839199
-              var choose = function (n, k) {
-                return k === 0 ? 1 : Math.floor((n * choose(n - 1, k - 1)) / k);
-              };
-              var p = function (n, i, mpi) {
-                return n - 2 * i >= 0 ? p(n - 2 * i, 1, m).scale(Expression.Integer.parseInteger(choose(n, i).toString()).multiply(mpi).negate()).add(p(n, i + 1, mpi.multiply(m))) : Polynom.of(Expression.ONE).shift(n);
-              };
-              var f = function (n, i) {
-                return i <= n ? p(n - i, 1, m).scale(np.getCoefficient(i)).add(f(n, i + 1)) : Polynom.ZERO;
-              };
-              return f(Math.floor(np.getDegree() / 2), 0);
+        }
+        if (isQuasiPalindromic && np.getDegree() <= 53) { // Math.log2(9007199254740991 + 1)
+          var substitute = function (m, np) { // t = mx + 1 / x
+            // https://stackoverflow.com/a/15302448/839199
+            var choose = function (n, k) {
+              return k === 0 ? 1 : Math.floor((n * choose(n - 1, k - 1)) / k);
             };
-            var m = j === 1 ? mj : nthRoot(j, mj, np); // TODO: check the result of nthRoot - ?
-            // t = mx + 1 / x
-            var pt = substitute(m, np);
-            //var pt = Polynom.of(np.getCoefficient(2).subtract(Expression.ONE.add(Expression.ONE).multiply(m).multiply(np.getCoefficient(0))), np.getCoefficient(1), np.getCoefficient(0));
-            var ptRoots = pt.getroots();
-            for (var i = 0; i < ptRoots.length; i += 1) {
-              var ptRoot = ptRoots[i];
-              // mx^2 - tx + 1 = 0
-              var u = Polynom.of(Expression.ONE, ptRoot.negate(), m);
-              var uRoots = u.getroots();
-              for (var j = 0; j < uRoots.length; j += 1) {
-                var root = uRoots[j];
-                np = np.divideAndRemainder(Polynom.of(root.negate(), Expression.ONE)).quotient;
-                roots.push(root);
-              }
+            var p = function (n, i, mpi) {
+              return n - 2 * i >= 0 ? p(n - 2 * i, 1, m).scale(Expression.Integer.fromNumber(choose(n, i)).multiply(mpi).negate()).add(p(n, i + 1, mpi.multiply(m))) : Polynomial.of(Expression.ONE).shift(n);
+            };
+            var f = function (n, i) {
+              return i <= n ? p(n - i, 1, m).scale(np.getCoefficient(i)).add(f(n, i + 1)) : Polynomial.ZERO;
+            };
+            return f(Math.floor(np.getDegree() / 2), 0);
+          };
+          var m = j === 1 ? mj : nthRoot(j, mj, np); // TODO: check the result of nthRoot - ?
+          // t = mx + 1 / x
+          var pt = substitute(m, np);
+          //var pt = Polynomial.of(np.getCoefficient(2).subtract(Expression.ONE.add(Expression.ONE).multiply(m).multiply(np.getCoefficient(0))), np.getCoefficient(1), np.getCoefficient(0));
+          var ptRoots = pt.getroots();
+          for (var i = 0; i < ptRoots.length; i += 1) {
+            var ptRoot = ptRoots[i];
+            // mx^2 - tx + 1 = 0
+            var u = Polynomial.of(Expression.ONE, ptRoot.negate(), m);
+            var uRoots = u.getroots();
+            for (var j = 0; j < uRoots.length; j += 1) {
+              var root = uRoots[j];
+              np = np.divideAndRemainder(Polynomial.of(root.negate(), Expression.ONE)).quotient;
+              roots.push(root);
             }
-            if (callback != undefined) {
-              callback({content: content, roots: roots, newPolynomial: np, type: "solvePalindromicEquaion"});
-            }
-            return roots;
           }
+          if (callback != undefined) {
+            callback({content: content, roots: roots, newPolynomial: np, type: "solvePalindromicEquaion"});
+          }
+          return roots;
         }
-      } catch (error) {
-        self.setTimeout(function () {
-          throw error;
-        }, 0);
-        self.setTimeout(function () {
-          throw new RangeError(np.toString());
-        }, 0);
       }
     }
 
-    if (np.getDegree() > 2) {
-      var n = roots.length;
-      np = np.doRationalRootTest(function (sp, q) {
-        roots.push(sp.divide(q));
-        return true;
-      });
-
-      if (n !== roots.length) {
-        if (global.hit != undefined) {
-          global.hit({getroots: {rational: ""}});
+    if (np.getDegree() >= 2) {
+      var root = np.doRationalRootTest();
+      if (root != null) {
+        np = np.divideAndRemainder(Polynomial.of(root.getNumerator().negate(), root.getDenominator())).quotient;
+        roots.push(root);
+        if (typeof hit === "function") {
+          hit({getroots: {rational: ""}});
         }
         if (callback != undefined) {
           callback({content: content, roots: roots, newPolynomial: np, type: "useTheRationalRootTest"});
         }
         if (np.getDegree() > 0) {
-          np = continueWithNewPolynomial(roots, np);
+          continueWithNewPolynomial(roots, np);
         }
         return roots;
       }
@@ -9451,17 +11945,17 @@ Expression.Degrees.prototype.toMathML = function (options) {
         return false;
       };
       if (!hasZeroCoefficients(np)) {
-        var g = np.getCoefficient(n - 1).divide(np.getCoefficient(n)).divide(new Expression.Integer(n));
+        var g = np.getCoefficient(n - 1).divide(np.getCoefficient(n)).divide(Expression.Integer.fromNumber(n));
         var ok = true;
         for (var k = np.getDegree() - 1; k >= 1 && ok; k -= 1) {
-          ok = g.equals(np.getCoefficient(k - 1).divide(np.getCoefficient(k)).multiply(new Expression.Integer(n - k + 1)).divide(new Expression.Integer(k)));
+          ok = g.equals(np.getCoefficient(k - 1).divide(np.getCoefficient(k)).multiply(Expression.Integer.fromNumber(n - k + 1)).divide(Expression.Integer.fromNumber(k)));
         }
         if (ok) {
           var root = g.negate();
           for (var k = 0; k < n; k += 1) {
             roots.push(root);
           }
-          np = Polynom.of(Expression.pow(root.negate().getDenominator(), n));
+          np = Polynomial.of(Expression.pow(root.negate().getDenominator(), n));
           if (callback != undefined) {
             callback({content: content, roots: roots, newPolynomial: np, type: "(ax+b)**n"});//TODO:
           }
@@ -9483,181 +11977,121 @@ Expression.Degrees.prototype.toMathML = function (options) {
       var EIGHTEEN = NINE.multiply(TWO);
       var TWENTY_SEVEN = NINE.multiply(THREE);
       // 18*a*b*c*d-4*b^3*d+b^2*c^2-4*a*c^3-27*a^2*d^2
-      var delta = EIGHTEEN.multiply(a).multiply(b).multiply(c).subtract(FOUR.multiply(b.pow(THREE)).multiply(d)).add(b.pow(TWO).multiply(c.pow(TWO))).subtract(FOUR.multiply(a).multiply(c.pow(THREE))).subtract(TWENTY_SEVEN.multiply(a.pow(TWO).multiply(d.pow(TWO))));
+      var delta = EIGHTEEN.multiply(a).multiply(b).multiply(c).multiply(d)
+                  .subtract(FOUR.multiply(b.pow(THREE)).multiply(d))
+                  .add(b.pow(TWO).multiply(c.pow(TWO)))
+                  .subtract(FOUR.multiply(a).multiply(c.pow(THREE)))
+                  .subtract(TWENTY_SEVEN.multiply(a.pow(TWO)).multiply(d.pow(TWO)));
       // b^2-3*a*c
       var delta0 = b.pow(TWO).subtract(THREE.multiply(a).multiply(c));
-      if (global.hit != undefined) {
-        global.hit({getroots: {cubic: (delta instanceof Expression.Integer ? delta.compareTo(Expression.ZERO) : "?") + "-" + (delta0 instanceof Expression.Integer ? delta0.compareTo(Expression.ZERO) : "?")}});
+      if (typeof hit === "function") {
+        hit({getroots: {cubic: (delta instanceof Expression.Integer ? delta.compareTo(Expression.ZERO) : "?") + "-" + (delta0 instanceof Expression.Integer ? delta0.compareTo(Expression.ZERO) : "?")}});
       }
-      if (delta0.equals(Expression.ZERO)) {
-        //TODO: link to a^3+3a^2b+3ab^2+b^3=0 - ?
-        if (delta.equals(Expression.ZERO)) {
+      if (delta.equals(Expression.ZERO)) {
+        if (delta0.equals(Expression.ZERO)) {
+          //TODO: link to a^3+3a^2b+3ab^2+b^3=0 - ?
           // -b/(3*a)
           var root = b.negate().divide(THREE.multiply(a));
           roots.push(root);
           roots.push(root);
           roots.push(root);
-          var p = Polynom.of(root.negate(), Expression.ONE);
+          var p = Polynomial.of(root.negate(), Expression.ONE);
           np = np.divideAndRemainder(p.multiply(p).multiply(p)).quotient;
           if (callback != undefined) {
             callback({content: content, roots: roots, newPolynomial: np, type: "solveCubicEquation"});
           }
           return roots;
         } else {
-          // 2*b^3-9*a*b*c+27*a^2*d
-          var delta1 = TWO.multiply(b.pow(THREE)).subtract(NINE.multiply(a).multiply(b).multiply(c)).add(TWENTY_SEVEN.multiply(a.pow(TWO)).multiply(d));
-          var C = nthRoot(3, delta1, np);
-          if (C != undefined) {
-            var root = np.getCoefficient(2).add(C).add(delta0.divide(C)).negate().divide(THREE.multiply(np.getCoefficient(3)));
-            roots.push(root);
-            np = np.divideAndRemainder(Polynom.of(root.negate(), Expression.ONE)).quotient;
-            if (callback != undefined) {
-              callback({content: content, roots: roots, newPolynomial: np, type: "solveCubicEquation"});
-            }
-            np = continueWithNewPolynomial(roots, np);
-            return roots;
-          }
-        }
-      } else {
-        // https://github.com/nicolewhite/algebra.js/blob/master/src/equations.js
-        // https://en.wikipedia.org/wiki/Cubic_function#Multiple_roots.2C_.CE.94_.3D_0
-        if (delta.equals(Expression.ZERO)) {
+          // https://github.com/nicolewhite/algebra.js/blob/master/src/equations.js
+          // https://en.wikipedia.org/wiki/Cubic_function#Multiple_roots.2C_.CE.94_.3D_0
           // a double root
           // 9*a*d-b*c
           var root = NINE.multiply(a).multiply(d).subtract(b.multiply(c)).divide(TWO.multiply(delta0));
           roots.push(root);
           roots.push(root);
-          var p = Polynom.of(root.negate(), Expression.ONE);
+          var p = Polynomial.of(root.negate(), Expression.ONE);
           np = np.divideAndRemainder(p.multiply(p)).quotient;
           roots.push(np.getCoefficient(0).negate().divide(np.getCoefficient(1)));
-          np = Polynom.of(np.getCoefficient(1));
+          np = Polynomial.of(np.getCoefficient(1));
           if (callback != undefined) {
             callback({content: content, roots: roots, newPolynomial: np, type: "solveCubicEquation"});
           }
           return roots;
+        }
+      } else {
+        // 2*b^3-9*a*b*c+27*a^2*d
+        var delta1 = TWO.multiply(b.pow(THREE)).subtract(NINE.multiply(a).multiply(b).multiply(c)).add(TWENTY_SEVEN.multiply(a.pow(TWO)).multiply(d));
+        var C = undefined;
+        if (delta0.equals(Expression.ZERO)) {
+          C = nthRoot(3, delta1, np);
         } else {
-          //?
+          var tmp = nthRoot(2, delta1.pow(TWO).subtract(FOUR.multiply(delta0.pow(THREE))), np);
+          if (tmp != undefined) {
+            C = nthRoot(3, delta1.add(tmp).divide(TWO), np);
+          }
+        }
+        if (C != undefined) {
+          var root = b.add(C).add(delta0.divide(C)).negate().divide(THREE.multiply(a));
+          roots.push(root);
+
+          if (true) {
+            var C1 = C.multiply(Expression.ONE.negate().add(THREE.squareRoot().multiply(Expression.I)).divide(TWO)); // C*(-1+sqrt(3)*i)/2
+            var root = b.add(C1).add(delta0.divide(C1)).negate().divide(THREE.multiply(a));
+            roots.push(root);
+
+            var C2 = C.multiply(Expression.ONE.negate().subtract(THREE.squareRoot().multiply(Expression.I)).divide(TWO)); // C*(-1-sqrt(3)*i)/2
+            var root = b.add(C2).add(delta0.divide(C2)).negate().divide(THREE.multiply(a));
+            roots.push(root);
+
+            np = Polynomial.of(np.getCoefficient(3));//TODO: check + test coverage
+            if (callback != undefined) {
+              callback({content: content, roots: roots, newPolynomial: np, type: "solveCubicEquation"});
+            }
+          } else {
+            np = np.divideAndRemainder(Polynomial.of(root.negate(), Expression.ONE)).quotient;
+            if (callback != undefined) {
+              callback({content: content, roots: roots, newPolynomial: np, type: "solveCubicEquation"});
+            }
+            continueWithNewPolynomial(roots, np);
+          }
+
+          return roots;
         }
       }
     }
 
     if (np.getDegree() >= 4) {
-      //TODO: multivariate polynomials - ?
-
-      // https://ru.wikipedia.org/wiki/%D0%9C%D0%B5%D1%82%D0%BE%D0%B4_%D0%9A%D1%80%D0%BE%D0%BD%D0%B5%D0%BA%D0%B5%D1%80%D0%B0
-      // https://ru.wikipedia.org/wiki/%D0%98%D0%BD%D1%82%D0%B5%D1%80%D0%BF%D0%BE%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B9_%D0%BC%D0%BD%D0%BE%D0%B3%D0%BE%D1%87%D0%BB%D0%B5%D0%BD_%D0%9B%D0%B0%D0%B3%D1%80%D0%B0%D0%BD%D0%B6%D0%B0
-      // https://en.wikipedia.org/wiki/Vandermonde_matrix
-      var integerCoefficients = true;
-      for (var i = 0; i <= np.getDegree(); i += 1) {
-        integerCoefficients = integerCoefficients && np.getCoefficient(i) instanceof Expression.Integer;
-      }
-      if (integerCoefficients) {
+      if (true) {
         //TODO: performance
-        var f = function () {
-          var n = np.getDegree();
-          var ys = new Array(n);
-          var total = 1;
-          for (var i = 0; i <= Math.floor(n / 2); i += 1) {
-            var bi = Expression.Integer.parseInteger(i.toString());
-            var y = np.calcAt(bi);
-            if (y.equals(Expression.ZERO)) {
-              return Polynom.of(bi.negate(), Expression.ONE);
-            }
-            var attachNegative = function (array) {
-              var result = new Array(array.length * 2);
-              for (var i = 0; i < array.length; i += 1) {
-                result[i * 2] = array[i];
-                result[i * 2 + 1] = array[i].negate();
-              }
-              return result;
-            };
-            var divisors = function (e) {
-              var divisors = [];
-              Expression.everyDivisor(e, function (d) {
-                divisors.push(d);
-                return true;
-              });
-              return divisors;
-            };
-            //TODO: ? the first should be positve
-            ys[i] = attachNegative(divisors(y));
-            total *= ys[i].length;
-            var V = Matrix.Zero(i + 1, i + 1).map(function (e, i, j) {
-              return Expression.pow(Expression.Integer.parseInteger(i.toString()), j);
-            });
-            var inv = V.inverse();
-            //scale?
-            inv = inv.scale(V.determinant());
-            //?
-            var u = new Array(i + 1);
-            for (var j = 0; j < i + 1; j += 1) {
-              u[j] = 0;
-            }
-            u[0] = -1;
-            for (var j = 0; j < total; j += 1) {
-              var k = 0;
-              u[k] += 1;
-              while (u[k] === ys[k].length) {
-                u[k] = 0;
-                k += 1;
-                u[k] += 1;
-              }
-              var y = Matrix.Zero(i + 1, 1).map(function (e, i, j) {
-                return ys[i][u[i]];
-              });
-              var s = inv.multiply(y);
-              var polynomialFromVector = function (s) {
-                var c = new Array(s.rows());
-                for (var j = 0; j < s.rows(); j += 1) {
-                  c[j] = s.e(j, 0);
-                }
-                return Polynom.from(c);
-              };
-              var g = polynomialFromVector(s);
-              //if (g.getDegree() > 0 && np.divideAndRemainder(g).remainder.equals(Polynom.ZERO)) {
-              //  return g;
-              //}
-              if (g.getDegree() > 0) {
-                var gc = g.getContent();
-                g = g.scale(gc.getDenominator()).divideAndRemainder(Polynom.of(gc.getNumerator()), "throw").quotient;
-                var t = np.divideAndRemainder(g, "undefined");
-                if (t != undefined && t.remainder.equals(Polynom.ZERO)) {
-                  return g;
-                }
-              }
-            }
-          }
-          return undefined;
-        };
         var isSmall = function () {
           var c = 1;
           for (var i = 0; i <= np.getDegree(); i += 1) {
             var k = np.getCoefficient(i);
             //TODO: ilog2(k)
             if (!k.equals(Expression.ZERO)) {
-              c *= k instanceof Expression.Integer ? Math.floor(Math.log(Math.abs(Number.parseInt(k.toString(), 10)) + 0.5) / Math.log(2)) + 1 : 1;
+              c *= k instanceof Expression.Integer ? Math.floor(Math.log(Math.abs(k.toNumber()) + 0.5) / Math.log(2)) + 1 : 1;
             }
           }
           return c <= 4 * 1024;
         };
         //console.time('Kronecker\'s method');
-        var g = isSmall() ? f() : undefined; // too slow
+        var g = isSmall() ? np._getFactorByKroneckersMethod() : undefined; // too slow
         //console.timeEnd('Kronecker\'s method');
         if (g != undefined) {
           var h = np.divideAndRemainder(g).quotient;
           var gr = g.getroots();
           for (var i = 0; i < gr.length; i += 1) {
             roots.push(gr[i]);
-            np = np.divideAndRemainder(Polynom.of(gr[i].negate(), Expression.ONE)).quotient;//TODO: optimize somehow - ?
+            np = np.divideAndRemainder(Polynomial.of(gr[i].negate(), Expression.ONE)).quotient;//TODO: optimize somehow - ?
           }
           var hr = h.getroots();
           for (var i = 0; i < hr.length; i += 1) {
             roots.push(hr[i]);
-            np = np.divideAndRemainder(Polynom.of(hr[i].negate(), Expression.ONE)).quotient;//TODO: optimize somehow - ?
+            np = np.divideAndRemainder(Polynomial.of(hr[i].negate(), Expression.ONE)).quotient;//TODO: optimize somehow - ?
           }
           if (hr.length > 0 || gr.length > 0) {
-            if (global.hit != undefined) {
-              global.hit({getroots: {methodOfKronecker: np.toString()}});
+            if (typeof hit === "function") {
+              hit({getroots: {methodOfKronecker: np.toString()}});
             }
             if (callback != undefined) {
               callback({content: content, roots: roots, newPolynomial: np, type: "methodOfKronecker"});//?
@@ -9671,12 +12105,12 @@ Expression.Degrees.prototype.toMathML = function (options) {
     //!2018-12-23
     if (np.getDegree() > 2) {
       // https://en.wikipedia.org/wiki/Square-free_polynomial
-      var gcd = function (a, b) {
-        return b.getDegree() === -1 ? a : gcd(b, a.divideAndRemainder(b).remainder);
-      };
+      //var gcd = function (a, b) {
+      //  return b.getDegree() === -1 ? a : gcd(b, a.divideAndRemainder(b).remainder);
+      //};
       var f = np;
       var d = f.derive();
-      var a0 = gcd(f, d);
+      var a0 = Polynomial.polynomialGCD(f, d);
       if (a0.getDegree() > 0) {
         //TODO: merge with a code for Kronecker's method
         a0 = a0.scale(a0.getContent().inverse());//!?
@@ -9686,15 +12120,15 @@ Expression.Degrees.prototype.toMathML = function (options) {
           var root = a0r[i];
           while (np.calcAt(root).equals(Expression.ZERO)) {
             roots.push(root);
-            np = np.divideAndRemainder(Polynom.of(root.negate(), Expression.ONE)).quotient;//TODO: optimize somehow - ?
+            np = np.divideAndRemainder(Polynomial.of(root.negate(), Expression.ONE)).quotient;//TODO: optimize somehow - ?
           }
-          q = q.divideAndRemainder(Polynom.of(root.negate(), Expression.ONE)).quotient;//TODO: optimize somehow - ?
+          q = q.divideAndRemainder(Polynomial.of(root.negate(), Expression.ONE)).quotient;//TODO: optimize somehow - ?
         }
         if (a0r.length > 0) {
-          self.setTimeout(function () {
-            throw new RangeError("squareFreeRoot" + ":" + f.toString());
-          }, 0);
-          np = continueWithNewPolynomial(roots, np);
+          if (typeof hit === "function") {
+            hit({getroots: {squareFreeRoot: np.toString()}});
+          }
+          continueWithNewPolynomial(roots, np);
           return roots;
         }
       }
@@ -9703,32 +12137,32 @@ Expression.Degrees.prototype.toMathML = function (options) {
 
     if (np.getDegree() >= 4) {
       //TODO: fix
-      if (global.hit != undefined) {
-        global.hit({getroots: {other: np.getDegree()}});
+      if (typeof hit === "function") {
+        hit({getroots: {other: np.getDegree()}});
       }
     }
 
     return roots;
   };
 
-  Polynom.prototype.derive = function () {
+  Polynomial.prototype.derive = function () {
     var newData = new PolynomialData(this.a.length - 1);
     for (var i = 1; i < this.a.length; i += 1) {
       var n = this.a.degree(i);
       var c = this.a.coefficient(i);
-      newData.add(n - 1, c.multiply(Expression.Integer.parseInteger(n.toString())));
+      newData.add(n - 1, c.multiply(Expression.Integer.fromNumber(n)));
     }
-    return new Polynom(newData);
+    return new Polynomial(newData);
   };
 
-  global.Polynom = Polynom;
-}(this));
+  self.Polynomial = Polynomial;
 
+})();
+(function () {
+"use strict";
 /*jslint plusplus: true, vars: true, indent: 2 */
-/*global Expression */
 
-(function (global) {
-  "use strict";
+  
 
   //    API same as http://sylvester.jcoglan.com/api/matrix.html
   //    new Matrix([
@@ -9999,7 +12433,10 @@ Expression.Degrees.prototype.toMathML = function (options) {
   Matrix.GaussMontante = "Gauss-Montante";
 
   function ToRowEchelonOptions(method, usage, callback) {
-    if (usage !== "determinant" && usage !== "inverse" && usage !== "solving" && usage !== "") {
+    if (usage !== "determinant" && usage !== "inverse" && usage !== "solving" && usage !== "LU-decomposition" && usage !== "" && usage !== "row-reduction") {
+      throw new RangeError();
+    }
+    if (method !== Matrix.Gauss && method !== Matrix.GaussJordan && method !== Matrix.GaussMontante) {
       throw new RangeError();
     }
     this.method = method;
@@ -10037,13 +12474,17 @@ Expression.Degrees.prototype.toMathML = function (options) {
     if (stoppedAtRow !== -1) {
       return {stoppedAtRow: stoppedAtRow, matrix: matrix, condition: condition};
     }
+    if (false) {
+      //TODO: remove
     //!2018-16-07 (from trash)
     if (options.usage === "solving" && pivotColumn === matrix.cols() - 1) {
       //TODO: test
+      //TODO: test if condition == undefined
       var c = condition.andZero(matrix.e(pivotRow, pivotColumn));
       return {stoppedAtRow: -1, matrix: matrix, condition: c};
     }
     //!
+    }
     while (true) {
       switch (state) {
         case COLUMN_LOOP:
@@ -10085,7 +12526,7 @@ Expression.Degrees.prototype.toMathML = function (options) {
             var found = false;
             if (pivotOriginRow === pivotRow - 1) {//!
               var row = pivotRow;
-              while (row < matrix.rows() && !(matrix.e(row, pivotColumn) instanceof Expression.Integer && !matrix.e(row, pivotColumn).equals(Expression.ZERO))) {
+              while (row < matrix.rows() && !((condition.andZero(matrix.e(row, pivotColumn)).isFalse() || options.usage === "LU-decomposition") && !matrix.e(row, pivotColumn).equals(Expression.ZERO))) {
                 row += 1;
               }
               if (row < matrix.rows()) {
@@ -10104,6 +12545,15 @@ Expression.Degrees.prototype.toMathML = function (options) {
                 } else if (c1.isFalse()) {
                   state = ZERO;
                 } else {
+                  if (options.usage === "row-reduction") {
+                    var tmp = Matrix.toRowEchelonStep(matrix, pivotRow, pivotColumn, pivotOriginRow, previousPivot, Object.assign({}, options, {callback: null}), condition);
+                    var m = tmp.matrix.slice(pivotOriginRow + 1, matrix.rows(), pivotColumn, matrix.cols()).map(function (e, i, j) {
+                      return c2.andNotZero(e).isFalse() ? Expression.ZERO : e;
+                    });
+                    if (m.eql(Matrix.Zero(m.rows(), m.cols()))) {
+                      return matrix.toRowEchelonInternal(options, pivotRow, pivotColumn, pivotOriginRow, previousPivot, NOT_ZERO, condition);
+                    }
+                  }
                   return {
                     matrix: matrix,
                     c1: c1,
@@ -10188,6 +12638,19 @@ Expression.Degrees.prototype.toMathML = function (options) {
   Matrix.prototype.inverse = function () { // m == n by augmention ...
     if (!this.isSquare()) {
       throw new RangeError("NonSquareMatrixException");
+    }
+    if (this.rows() === 2) {
+      var a = this.e(0, 0);
+      var b = this.e(0, 1);
+      var c = this.e(1, 0);
+      var d = this.e(1, 1);
+      var det = a.multiply(d).subtract(b.multiply(c));
+      if (det.equals(Expression.ZERO)) {
+        throw new RangeError("SingularMatrixException");
+      }
+      return Matrix.Zero(this.rows(), this.rows()).map(function (e, i, j) {
+        return (i === 0 ? (j === 0 ? d : b.negate()) : (j === 0 ? c.negate() : a)).divide(det);
+      });
     }
     var m = this.augment(Matrix.I(this.rows()));
     //m = m.toRowEchelon(Matrix.GaussJordan, "inverse", undefined).matrix;
@@ -10461,82 +12924,27 @@ Expression.Degrees.prototype.toMathML = function (options) {
     });
   };
 
-  global.Matrix = Matrix;
+  Matrix.toRowEchelonWithCallback = function (matrix, method, usage, changeCallback, resultCallback) {
+    var result = matrix.toRowEchelonXXX(method, usage, changeCallback, Condition.TRUE);
+    var w = function (result) {
+      if (result.c1 == undefined && result.c2 == undefined) {
+        resultCallback(result);
+      } else {
+        w(result.a1());
+        w(result.a2());
+      }
+    };
+    w(result);
+  };
 
-}(this));
+  self.Matrix = Matrix;
 
-/*global Expression, NonSimplifiedExpression*/
-
+})();
 (function () {
 "use strict";
 
-Expression.prototype.toLaTeX = function (options) {
-  throw new RangeError();
-};
 
-Expression.Integer.prototype.toLaTeX = function (options) {
-  return this.value.toString();
-};
-Expression.Function.prototype.toLaTeX = function (options) {
-  return "\\" + this.name + "\\left(" + this.a.toLaTeX(options) + "\\right)";
-};
-Expression.SquareRoot.prototype.toLaTeX = function (options) {
-  return "\\sqrt{" + this.a.toLaTeX(options) + "}";
-};
-Expression.NthRoot.prototype.toLaTeX = function (options) {
-  return "\\sqrt[" + this.n + "]{" + this.a.toLaTeX(options) + "}";
-};
-Expression.BinaryOperation.prototype.toLaTeX = function (options) {
-  var a = this.a;
-  var b = this.b;
-  var fa = a.getPrecedence() + (a.isRightToLeftAssociative() ? -1 : 0) < this.getPrecedence();
-  var fb = this.getPrecedence() + (this.isRightToLeftAssociative() ? -1 : 0) >= b.getPrecedence();
-  fa = fa || a.isUnaryPlusMinus();
-  fb = fb || b.isUnaryPlusMinus(); // 1*-3 -> 1*(-3)
-  fa = fa || (this instanceof Expression.Exponentiation && a instanceof Expression.Function); // cos(x)^(2+3)
-  return (fa ? "\\left(" : "") + a.toLaTeX(options) + (fa ? "\\right)" : "") +
-         this.getS() +
-         (fb ? "\\left(" : "") + b.toLaTeX(options) + (fb ? "\\right)" : "");
-};
-Expression.Negation.prototype.toLaTeX = function (options) {
-  var b = this.b;
-  var fb = this.getPrecedence() + (this.isRightToLeftAssociative() ? -1 : 0) >= b.getPrecedence();
-  fb = fb || b.isUnaryPlusMinus();
-  // assert(fa === false);
-  return "-" + (fb ? "\\left(" : "") + b.toLaTeX(options) + (fb ? "\\right)" : "");
-};
-Expression.Division.prototype.toLaTeX = function (options) {
-  return "\\frac{" + this.a.toLaTeX(options) + "}{" + this.b.toLaTeX(options) + "}";
-};
-Expression.Symbol.prototype.toLaTeX = function (options) {
-  return this.symbol;
-};
-Expression.Matrix.prototype.toLaTeX = function (options) {
-  var x = this.matrix;
-  var s = "";
-  s += "\\begin{pmatrix}\n";
-  for (var i = 0; i < x.rows(); i += 1) {
-    for (var j = 0; j < x.cols(); j += 1) {
-      var e = x.e(i, j);
-      s += e.toLaTeX(options) + (j + 1 < x.cols() ? " & " : (i + 1 < x.rows() ? " \\\\" : "") + "\n");
-    }
-  }
-  s += "\\end{pmatrix}";
-  return s;
-};
-Expression.Complex.prototype.toLaTeX = function (options) {
-  return this.toString(options);
-};
-NonSimplifiedExpression.prototype.toLaTeX = function (options) {
-  return this.e.toLaTeX(options);
-};
 
-}());
-
-/*global Expression, Polynom*/
-
-(function () {
-"use strict";
 
 function PolynomialRoot(polynomial, interval) {
   Expression.Symbol.call(this, "@");
@@ -10572,12 +12980,12 @@ function makeExpressionWithPolynomialRoot(e, root) {
   }
   var v = root;
   //TODO: use polynomial from the start - ?
-  var f = Polynom.toPolynomial(en, v);
+  var f = Polynomial.toPolynomial(en, v);
   if (f.hasRoot(v)) {
     return Expression.ZERO;
   }
   var c = function (x) {
-    return Polynom.toPolynomial(x, v).divideAndRemainder(v.polynomial).remainder.calcAt(v);
+    return Polynomial.toPolynomial(x, v).divideAndRemainder(v.polynomial).remainder.calcAt(v);
   };
   e = c(e.getNumerator()).divide(c(e.getDenominator()));
   if (e instanceof Expression.Integer) {
@@ -10619,19 +13027,27 @@ ExpressionWithPolynomialRoot.prototype.toString = function (options) {
     return Expression.ZERO.toString(options);
   }
   //return this.e.toString(options);
-  var tmp = Expression.toDecimalStringInternal(this.e, options.fractionDigits !== -1 && options.fractionDigits != null ? options.fractionDigits : 3, false);
+  var tmp = toDecimalStringInternal(this.e, options.fractionDigits !== -1 && options.fractionDigits != null ? options.fractionDigits : 3, undefined, undefined);
   return tmp;
 };
+
 ExpressionWithPolynomialRoot.prototype.toMathML = function (options) {
+  //TODO: remove
+  var decimalToMathML = function (sign, number) {
+    return (sign < 0 ? "<mrow>" : "") + (sign < 0 ? "<mo>&minus;</mo>" : "") + "<mn>" + number + "</mn>" + (sign < 0 ? "</mrow>" : "");
+  };
+  var complexToMathML = function (real, imaginary) {
+    return '<mrow>' + real + (imaginary.indexOf('<mo>&minus;</mo>') !== -1 ? '<mo>&minus;</mo>' : '<mo>+</mo>') + (imaginary !== '' ? imaginary.replace(/<mrow><mo>&minus;<\/mo><mn>([^<]*)<\/mn><\/mrow>/g, '<mn>$1</mn>') + '<mo>&it;</mo>' : '') + '<mi>&ii;</mi>' + '</mrow>';
+  };
+
   //TODO:
   if (this.equals(Expression.ZERO)) {
     return Expression.ZERO.toMathML(options);
   }
   //return this.e.toMathML(options);
-  var tmp = Expression.toDecimalStringInternal(this.e, options.fractionDigits !== -1 && options.fractionDigits != null ? options.fractionDigits : 3, true);
+  var tmp = toDecimalStringInternal(this.e, options != null && options.fractionDigits !== -1 && options.fractionDigits != null ? options.fractionDigits : 3, decimalToMathML, complexToMathML);
   return tmp;
 };
-
 
 ExpressionWithPolynomialRoot.prototype.multiply = function (other) {
   if (other instanceof ExpressionWithPolynomialRoot) {
@@ -10740,7 +13156,7 @@ ExpressionWithPolynomialRoot.prototype.isUnaryPlusMinus = function () {
 
   SturmSequence.prototype.numberOfRoots = function (interval) {
     if (interval.a.equals(interval.b)) {
-      throw new Error();
+      throw new TypeError();
     }
     return this.signChanges(interval.a) - this.signChanges(interval.b);
   };
@@ -10768,7 +13184,7 @@ ExpressionWithPolynomialRoot.prototype.isUnaryPlusMinus = function () {
     return i.compareTo(Expression.ZERO) < 0 ? i.negate() : i;
   };
   
-  Polynom.prototype.getRootsInterval = function () {
+  Polynomial.prototype.getRootsInterval = function () {
     //TODO: only integer coefficients (?)
     // https://en.wikipedia.org/wiki/Sturm%27s_theorem#Number_of_real_roots
     var max = null;
@@ -10783,7 +13199,7 @@ ExpressionWithPolynomialRoot.prototype.isUnaryPlusMinus = function () {
     return {a: M.negate(), b: M};
   };
 
-  Polynom.prototype.getZero = function (interval, precision) {
+  Polynomial.prototype.getZero = function (interval, precision) {
     var e = Expression.pow(Expression.TEN, precision); // epsilon^-1
     if (!(e instanceof Expression.Integer)) {
       throw new RangeError("epsilon^-1 is not an integer");
@@ -10864,11 +13280,15 @@ ExpressionWithPolynomialRoot.prototype.isUnaryPlusMinus = function () {
     return {a: a, b: b};
   };
 
+  //var gcd = function (a, b) {
+  //  return b.getDegree() === -1 ? a : gcd(b, a.divideAndRemainder(b).remainder);
+  //};
+  
   var gcd = function (a, b) {
-    return b.getDegree() === -1 ? a : gcd(b, a.divideAndRemainder(b).remainder);
+    return b.getDegree() === -1 ? a : Polynomial.polynomialGCD(a, b);
   };
 
-  Polynom.prototype.hasRoot = function (polynomialRoot) {
+  Polynomial.prototype.hasRoot = function (polynomialRoot) {
     var f = this;
     var p = polynomialRoot.polynomial;
     var g = gcd(f, p);
@@ -10880,7 +13300,7 @@ ExpressionWithPolynomialRoot.prototype.isUnaryPlusMinus = function () {
     return sturmSequence.numberOfRoots(i) === 1;
   };
 
-  Polynom.prototype.hasIntegerCoefficients = function () {
+  Polynomial.prototype.hasIntegerCoefficients = function () {
     //TODO: optimize
     for (var i = 0; i <= this.getDegree(); i += 1) {
       if (!(this.getCoefficient(i) instanceof Expression.Integer)) {
@@ -10909,11 +13329,11 @@ ExpressionWithPolynomialRoot.prototype.isUnaryPlusMinus = function () {
     }
   };
 
-  // Polynom.toPolynom("x^3-8x^2+21x-18").getZeros();
-  Polynom.prototype.getZeros = function (precision) {
+  // Polynomial.toPolynomial("x^3-8x^2+21x-18").getZeros();
+  Polynomial.prototype.getZeros = function (precision) {
     //TODO: test
     var content = this.getContent();
-    var f = this.scale(content.getDenominator()).divideAndRemainder(Polynom.of(content.getNumerator()), "throw").quotient;
+    var f = this.scale(content.getDenominator()).divideAndRemainder(Polynomial.of(content.getNumerator()), "throw").quotient;
 
     if (!f.hasIntegerCoefficients()) {
       //return [];
@@ -10958,22 +13378,20 @@ ExpressionWithPolynomialRoot.prototype.isUnaryPlusMinus = function () {
     return {result: result, multiplicities: multiplicities};
   };
 
-}(this));
-
-/*global Matrix, Expression*/
-
+})();
 (function () {
 "use strict";
+
+
 
 // https://ca.wikipedia.org/wiki/Forma_canònica_de_Jordan
 
 // https://es.wikipedia.org/wiki/Forma_canónica_de_Jordan
 
-Expression.getFormaDeJordan = function (matrix, eigenvalues, multiplicities) {
+Expression.getFormaDeJordan = function (matrix, eigenvalues, multiplicities, hack) {
   function getSolutionSet(matrix) {
     var fullMatrix = matrix.augment(Matrix.Zero(matrix.cols(), 1));
-    //TODO: Matrix.GaussMontante
-    var result = fullMatrix.toRowEchelon(Matrix.GaussJordan, "solving", undefined);
+    var result = fullMatrix.toRowEchelon(Matrix.GaussMontante, "solving", undefined);
     var tmp = Matrix.solveByGaussNext(result.matrix);
     var currentEigenvectors = Matrix.getSolutionSet(tmp).basisVectors;
     return currentEigenvectors;//?
@@ -10995,9 +13413,9 @@ Expression.getFormaDeJordan = function (matrix, eigenvalues, multiplicities) {
   }
   function matrixFromBasis(basis) {
     if (basis.length === 0) {
-      throw new Error();
+      throw new TypeError();
     }
-    return Matrix.Zero(basis[0].rows(), basis[0].rows()).map(function (e, i, j) {
+    return Matrix.Zero(basis.length, basis[0].rows()).map(function (e, i, j) {
       return basis[i].e(j, 0);
     });
   }
@@ -11013,14 +13431,35 @@ Expression.getFormaDeJordan = function (matrix, eigenvalues, multiplicities) {
     }
     return true;
   }
+  function isLinearlyIndependentSet(basis, vectors) {
+    // https://math.stackexchange.com/questions/412563/determine-if-vectors-are-linearly-independent
+    return matrixFromBasis(basis.concat(vectors)).rank() === basis.length + vectors.length;
+  }
+
+  //!TODO: remove
+  if (eigenvalues.length === matrix.rows()) {
+    var eigenvectors = Expression.getEigenvectors(matrix, eigenvalues).eigenvectors;
+    var tmp = Expression.diagonalize(matrix, eigenvalues, multiplicities, eigenvectors);
+    var P = tmp.T;
+    var J = tmp.L;
+    var P_INVERSED = tmp.T_INVERSED;
+    //console.log("P=" + P.toString() + ", J=" + J.toString());
+    return {
+      P: P,
+      J: J,
+      P_INVERSED: P_INVERSED
+    };
+  }
+  //!
+
   var A = matrix;
   var n = A.rows();
 
   var basis = [];
   var blocks = [];
-  //var bs = null;
   for (var i = 0; i < eigenvalues.length; i += 1) {
     // https://en.wikipedia.org/wiki/Generalized_eigenvector#Computation_of_generalized_eigenvectors
+    var basisCorrespondingToTheEigenvalue = []; // TODO: optimize (n**3 -> n**2)
     var eigenvalue = eigenvalues[i];
     var algebraicMultiplicity = multiplicities[i];
     var B = A.subtract(Matrix.I(n).scale(eigenvalue));
@@ -11030,29 +13469,32 @@ Expression.getFormaDeJordan = function (matrix, eigenvalues, multiplicities) {
     }
     m += 1;
     while (--m >= 1) {
-      var z = 0;
-      var pm = B.pow(m - 1).rank() - 2 * B.pow(m).rank() + B.pow(m + 1).rank();
+      //var z = 0;
+      //var pm = B.pow(m - 1).rank() - 2 * B.pow(m).rank() + B.pow(m + 1).rank();
       var solutionSet = getSolutionSet(B.pow(m));  // "kernel of A"
-      for (var j = 0; j < solutionSet.length && z < pm; j += 1) {
+      for (var j = 0; j < solutionSet.length; j += 1) {
         var solution = solutionSet[j];
+        //if (z < pm) {
         //console.log(B.pow(m).augment(solution).rank(), m, n);
-        // (bs == null || bs.augment(solution).rank() > bs.rank())
         if (!isSolution(B.pow(m - 1), solution)) {
-          var tmp = [];
+          var chain = [];
           var s = solution;
           for (var k = 0; k < m; k += 1) {
-            tmp.push(s);
-            //bs = bs == null ? s : bs.augment(s);
+            chain.push(s);
             s = B.multiply(s);
           }
-          z += 1;
-          tmp.reverse();
-          basis = basis.concat(tmp);
-          blocks.push({
-            size: m,
-            eigenvalue: eigenvalue
-          });
+          chain.reverse();
+          if (isLinearlyIndependentSet(basisCorrespondingToTheEigenvalue, chain)) {
+            //z += 1;
+            basis = basis.concat(chain);
+            basisCorrespondingToTheEigenvalue = basisCorrespondingToTheEigenvalue.concat(chain);
+            blocks.push({
+              size: m,
+              eigenvalue: eigenvalue
+            });
+          }
         }
+        //}
       }
     }
   }
@@ -11062,23 +13504,70 @@ Expression.getFormaDeJordan = function (matrix, eigenvalues, multiplicities) {
   }
   var P = matrixFromBasis(basis).transpose();
   //console.log("P=" + P.toString() + ", J=" + J.toString());
-  if (A.toString() !== P.multiply(J).multiply(P.inverse()).toString()) {
+  //var P_INVERSED = P.inverse();
+  var P_INVERSED = P.isExact() ? P.inverse() : (hack ? null : getInverse(A, eigenvalues, multiplicities, P));
+  if (!hack && P.isExact()) {
+  if (A.toString() !== P.multiply(J).multiply(P_INVERSED).toString()) {
     throw new RangeError("assertion failed");
+  }
   }
   return {
     P: P,
     J: J,
-    P_INVERSED: P.inverse()
+    P_INVERSED: P_INVERSED
   };
 };
 
+// A = P*J*P^-1
+// A^T = (P^-1)^T*J^T*P^T
+// Note:
+// (0 0 0 1)         (0 0 0 1)
+// (0 0 1 0)         (0 0 1 0)
+// (0 1 0 0) * J^T * (0 1 0 0) = J
+// (1 0 0 0)         (1 0 0 0)
+// where on the left we are doing row spaws, then doing column swaps.
+// Note: the inverse of the anti-diagonal unitary matrix is the matrix itself.
+// A^T = X*Y*X^-1
+// (P^-1)^T*J^T*P^T = X*Y*X^-1
+// (P^-1)^T*B^-1*J*B*P^T = X*Y*X^-1
+// Then P^-1 = (X*B)^T .
 
-}());
+var getInverse = function (A, eigenvalues, multiplicities, P) {
+  // https://en.wikipedia.org/wiki/Diagonalizable_matrix : The row vectors of P^−1 are the left eigenvectors of A
+  // https://en.wikipedia.org/wiki/Eigenvalues_and_eigenvectors#Left_and_right_eigenvectors :  a left eigenvector of A is the same as the transpose of a right eigenvector of A^T, with the same eigenvalue
+  var AT = A.transpose();
+  var tmp2 = Expression.getFormaDeJordan(AT, eigenvalues, multiplicities, true);
+  var J = tmp2.J;
+  var X = tmp2.P;
 
-/*global Expression, Matrix, console*/
+  var n = A.cols();
+  var B = Matrix.Zero(n, n).map(function (e, i, j) {
+    function getCurrentBlock() {
+      var s = i;
+      while (s - 1 >= 0 && s < n && J.e(s - 1, s).equals(Expression.ONE)) {
+        s -= 1;
+      }
+      var e = i;
+      while (e + 1 < n && J.e(e, e + 1).equals(Expression.ONE)) {
+        e += 1;
+      }
+      return {s: s, e: e};
+    }
+    var tmp = getCurrentBlock();
+    return tmp.s + tmp.e === i + j ? Expression.ONE : Expression.ZERO;
+  });
 
+  var P_INVESRED = X.multiply(B).transpose();
+  return Expression._unscaleInverseMatrix(P_INVESRED, P);
+};
+Expression._getInverse = getInverse;
+
+})();
 (function () {
-  "use strict";
+"use strict";
+
+
+
   
 Expression.getPolynomialRootsWithSteps = function (polynomial, fractionDigits, callback) {
   var roots = polynomial.getroots(callback);
@@ -11089,9 +13578,9 @@ Expression.getPolynomialRootsWithSteps = function (polynomial, fractionDigits, c
   // experimental code
   var zeros = {result: [], multiplicities: []};
   if (typeof polynomial.getZeros === "function" && roots.length !== polynomial.getDegree()) {
-    var p = Polynom.of(Expression.ONE);
+    var p = Polynomial.of(Expression.ONE);
     for (var i = 0; i < roots.length; i += 1) {
-      p = p.multiply(Polynom.of(roots[i].negate(), Expression.ONE));
+      p = p.multiply(Polynomial.of(roots[i].negate(), Expression.ONE));
     }
     var r = polynomial.divideAndRemainder(p).quotient;
     var precision = Math.max(fractionDigits || 0, 5);
@@ -11132,10 +13621,10 @@ Expression.getEigenvalues = function (matrix, fractionDigits, callback) {
   if (!matrix.isSquare()) {
     throw new RangeError("NonSquareMatrixException");
   }
-  // TODO: remove Polynom
+  // TODO: remove Polynomial
 
   var determinant = matrix.map(function (e, i, j) {
-    var p = i === j ? Polynom.of(e, Expression.ONE.negate()) : (e.equals(Expression.ZERO) ? Polynom.ZERO : Polynom.of(e));
+    var p = i === j ? Polynomial.of(e, Expression.ONE.negate()) : (e.equals(Expression.ZERO) ? Polynomial.ZERO : Polynomial.of(e));
     return new Expression.Polynomial(p);
   }).determinant();
   determinant = determinant.polynomial;
@@ -11184,7 +13673,11 @@ var getInverse = function (A, eigenvalues, T) {
   var T_INVERSED = Matrix.I(AT.cols()).map(function (e, i, j) {
     return eigenvectors[i].e(j, 0);
   });
-  
+  return _unscaleInverseMatrix(T_INVERSED, T);
+};
+
+var _unscaleInverseMatrix = function (T_INVERSED, T) {
+  // we know, that the result is {{s_1, 0, 0, 0}, {0, s_2, 0, 0}, {0, 0, s_3, 0}, {0, 0, 0, s_4}}
   var trickyMultiply = function (a, b) {
     var n = a.rows();
     return Matrix.Zero(n, n).map(function (element, i, j) {
@@ -11208,7 +13701,7 @@ var getInverse = function (A, eigenvalues, T) {
 
   return S_INVERSED.multiply(T_INVERSED);
 };
-
+Expression._unscaleInverseMatrix = _unscaleInverseMatrix;//TODO: make private
 
 // A = T^-1 L T ,T-matrix of own vectors, L - matrix of own values
 
@@ -11257,9 +13750,9 @@ Expression.LUDecomposition = function (matrix) {
   var P = Matrix.I(N);
   var swapFlag = false;
   var pivotRow = 0;
-  for (var n = 0; n < N; n += 1) {
-    var c = pivotRow;
-    if (n < matrix.cols()) {
+  for (var n = 0; n < matrix.cols(); n += 1) {
+    if (pivotRow < N) {
+      var c = pivotRow;
       if (a.e(pivotRow, n).equals(Expression.ZERO)) {
         for (var k = pivotRow + 1; k < N && c === pivotRow; k += 1) {
           if (!a.e(k, n).equals(Expression.ZERO)) {
@@ -11365,9 +13858,9 @@ Expression.CholeskyDecomposition = function (matrix) {
         }
         var x = sum == null ? A.e(j, j) : A.e(j, j).subtract(sum);
         //TODO: fix
-        if (x instanceof Expression.Integer && x.compareTo(Expression.ZERO) < 0) {
-          throw new RangeError("NonPositiveDefiniteMatrix");
-        }
+        //if (x instanceof Expression.Integer && x.compareTo(Expression.ZERO) < 0) {
+        //  throw new RangeError("NonPositiveDefiniteMatrix");
+        //}
         e = x.squareRoot();
       } else {
         var sum = null;
@@ -11382,37 +13875,421 @@ Expression.CholeskyDecomposition = function (matrix) {
     }
   }
   return {
-    L: new Expression.Matrix(Matrix.padRows(L, null))
+    L: Matrix.padRows(L, null)
   };
 };
 
-}());
 
-/*jslint plusplus: true, vars: true, indent: 2, white: true */
-/*global i18n, JSON, NonSimplifiedExpression, Matrix, Polynom, Expression, ExpressionParser, console */
 
-(function (global) {
+})();
+(function () {
 "use strict";
 
-var RPN = ExpressionParser.parse;//TODO: fix
-RPN.Context = ExpressionParser.Context;
 
-function Utils() {
+
+function Condition(array) {
+  this.array = array;
 }
 
-Utils.escapeHTML = function (s) {
-  return s.replace(/&/g, "&amp;")
-          .replace(/"/g, "&quot;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
+Condition.NEZ = " != 0";
+Condition.EQZ = " == 0";
+
+Condition.prototype._and = function (operator, e) {
+  if (operator !== Condition.NEZ && operator !== Condition.EQZ) {
+    throw new TypeError();
+  }
+  if (e == undefined) {
+    throw new RangeError();
+  }
+  if (this === Condition.FALSE) {
+    return this;
+  }
+  if (e instanceof Expression.GF2Value) {
+    return this._and(operator, e.value);//?
+  }
+  if (e instanceof Expression.NthRoot) {
+    return this._and(operator, e.a);
+  }
+  if (e instanceof Expression.Integer || e instanceof Expression.Complex) {
+    if (e.equals(Expression.ZERO)) {
+      if (operator === Condition.NEZ) {
+        return Condition.FALSE;
+      }
+      return this;
+    }
+    if (operator === Condition.EQZ) {
+      return Condition.FALSE;
+    }
+    return this;
+  }
+  if (operator === Condition.NEZ) {
+    if (e instanceof Expression.Multiplication) {
+      return this._and(Condition.NEZ, e.a)._and(Condition.NEZ, e.b);
+    }
+  }
+  if (e instanceof Expression.Division) {
+    return this._and(operator, e.a)._and(Condition.NEZ, e.b);
+  }
+  if (Expression.isConstant(e)) {
+    if (operator === Condition.NEZ) {
+      return this;
+    }
+    if (operator === Condition.EQZ) {
+      return Condition.FALSE;
+    }
+  }
+  var contains = function (array, operator, e) {
+    for (var i = 0; i < array.length; i += 1) {
+      if (array[i].operator === operator && array[i].expression.equals(e)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  if (contains(this.array, operator, e)) {
+    return this;
+  }
+  if (contains(this.array, operator === Condition.EQZ ? Condition.NEZ : Condition.EQZ, e)) {
+    return Condition.FALSE;
+  }
+  if (e instanceof Expression.Exponentiation &&
+      e.b instanceof Expression.Integer &&
+      e.b.compareTo(Expression.ZERO) > 0 &&
+      e.a instanceof Expression.Symbol) {
+    return this._and(operator, e.a);
+  }
+
+  var add = function (oldArray, y) {
+    var e = y.expression;//!
+
+    //!new
+    if (e.isNegative()) {
+      return add(oldArray, {expression: e.negate(), operator: y.operator});
+    }
+
+    // (x-1)^(1/2)
+    if (e instanceof Expression.Exponentiation &&
+        e.b.getNumerator() instanceof Expression.Integer &&
+        !e.b.getDenominator().equals(Expression.ONE)) {
+      return add(oldArray, {expression: e.a, operator: y.operator});
+    }
+
+    // (4*k+1)^(1/2)+1
+    if (e instanceof Expression.Addition &&
+        e.a instanceof Expression.Exponentiation &&
+        Expression.isConstant(e.b) && //!
+        e.a.b.getDenominator() instanceof Expression.Integer &&
+        !e.a.b.getDenominator().equals(Expression.ONE)) {
+      if (e.a.b.getDenominator().remainder(Expression.TWO).equals(Expression.ZERO) && !e.b.isNegative()) {
+        return add(oldArray, {expression: Expression.ONE, operator: y.operator});
+      }
+      //if (!e.b.negate().pow(e.a.b.inverse()).pow(e.a.b).equals(e.b.negate())) {
+      //  return add(oldArray, {expression: Expression.ONE, operator: y.operator});
+      //}
+      //TODO: fix
+      return add(oldArray, {expression: e.a.a.pow(e.a.b.getNumerator()).subtract(e.b.negate().pow(e.a.b.getDenominator())), operator: y.operator});
+    }
+
+    if (y.expression instanceof Expression.Multiplication && y.expression.b instanceof Expression.IdentityMatrix) {
+      return add(oldArray, {expression: y.expression.a, operator: y.operator});
+    }
+    if (y.expression instanceof Expression.Division) {
+      var tmp = oldArray;
+      tmp = add(tmp, {expression: y.expression.a, operator: y.operator});
+      if (tmp == null) {
+        return null;
+      }
+      tmp = add(tmp, {expression: y.expression.b, operator: Condition.NEZ});
+      return tmp;
+    }
+    /*if (y.expression instanceof Expression.Division && Expression.isConstant(y.expression.b)) {
+      y = {
+        expression: y.expression.a,
+        operator: y.operator
+      };
+    }*/
+    if (y.expression instanceof Expression.Integer || y.expression instanceof Expression.Complex) {
+      if (y.operator === Condition.NEZ && y.expression.equals(Expression.ZERO) ||
+          y.operator === Condition.EQZ && !y.expression.equals(Expression.ZERO)) {
+        return null;
+      }
+      return oldArray;
+    }
+    //TODO: check code coverage, remove extra branches
+    if (Expression.isConstant(y.expression) && !y.expression.equals(Expression.ZERO)) {
+      if (y.operator === Condition.NEZ) {
+        return oldArray;
+      }
+      if (y.operator === Condition.EQZ) {
+        return null;
+      }
+    }
+    if (y.expression instanceof Expression.NthRoot) {
+      return add(oldArray, {expression: y.expression.a, operator: y.operator});
+    }
+    if (y.expression instanceof Expression.Multiplication) {
+      if (y.operator === Condition.EQZ) {
+        if (y.expression.a instanceof Expression.Integer && !y.expression.a.equals(Expression.ZERO)) {
+          //TODO: fix - ?
+          y = {
+            expression: y.expression.b,
+            operator: y.operator
+          };
+        }
+      }
+      if (y.operator === Condition.NEZ) {
+        var tmp = oldArray;
+        tmp = add(tmp, {expression: y.expression.a, operator: Condition.NEZ});
+        if (tmp == null) {
+          return null;
+        }
+        tmp = add(tmp, {expression: y.expression.b, operator: Condition.NEZ});
+        return tmp;
+      }
+    }
+
+    var p = Expression.getMultivariatePolynomial(y.expression);
+    if (p != null) {
+      var content = p.p.getContent();
+      if (!content.equals(Expression.ONE) && !content.equals(Expression.ONE.negate())) {
+        // content * y.expression.divide(content)
+        if (operator === Condition.NEZ) {
+          var tmp = add(oldArray, {expression: y.expression.divide(content), operator: Condition.NEZ});
+          if (tmp == null) {
+            return null;
+          }
+          return add(tmp, {expression: content, operator: Condition.NEZ});
+        }
+        while (p != null) {
+          content = p.p.getContent();
+          p = Expression.getMultivariatePolynomial(content);
+        }
+        y = {
+          expression: y.expression.divide(content),
+          operator: y.operator
+        };
+      }
+      if (p != null && p.p.getDegree() > 1 && p.p.getCoefficient(0).equals(Expression.ZERO)) {
+        if (operator === Condition.NEZ) {
+          var tmp = add(oldArray, {expression: p.v, operator: Condition.NEZ});
+          if (tmp == null) {
+            return null;
+          }
+          return add(tmp, {expression: y.expression.divide(p.v), operator: Condition.NEZ});
+        }
+      }
+    }
+
+    var newArray = [];
+    for (var i = 0; i < oldArray.length; i += 1) {
+      var x = oldArray[i];
+      if ((x.operator === Condition.NEZ && y.operator === Condition.EQZ ||
+           x.operator === Condition.EQZ && y.operator === Condition.NEZ) &&
+           Expression.isSingleVariablePolynomial(x.expression.multiply(y.expression))) {
+        var g = x.expression.gcd(y.expression);
+        while (!g.equals(Expression.ONE) && !g.equals(Expression.ONE.negate())) {
+          if (x.operator === Condition.EQZ) {
+            x = {
+              operator: x.operator,
+              expression: x.expression.divide(g)
+            };
+          } else {
+            y = {
+              operator: y.operator,
+              expression: y.expression.divide(g)
+            };
+          }
+          g = x.expression.gcd(y.expression);
+        }
+        if (x.operator === Condition.EQZ) {
+          var tmp = y;
+          y = x;
+          x = tmp;
+        }
+        if (Expression.isConstant(y.expression)) {
+          return null;
+        }
+        //if (!Expression.isSingleVariablePolynomial(x.expression.multiply(y.expression))) {
+        //  newArray.push(x);
+        //}
+      }
+      if (x.operator === Condition.NEZ && y.operator === Condition.EQZ && Expression.isSingleVariablePolynomial(x.expression.multiply(y.expression))) {
+        y = y;
+      } else if (x.operator === Condition.EQZ && y.operator === Condition.EQZ && Expression.isSingleVariablePolynomial(x.expression.multiply(y.expression))) {
+        var g = x.expression.gcd(y.expression);
+        if (g instanceof Expression.Integer) {
+          return null;
+        }
+        y = {
+          operator: y.operator,
+          expression: g
+        };
+      } else if (Expression.isSingleVariablePolynomial(x.expression.multiply(y.expression))) {
+        // TODO: both Condition.NEZ - ?
+        var g = x.expression.gcd(y.expression);
+        x = {
+          operator: x.operator,
+          expression: x.expression.divide(g)
+        };
+        if (!Expression.isConstant(x.expression)) {
+          newArray.push(x);
+        }
+      } else { // !isSingleVariablePolynomial
+        var p = null;
+        var pOperator = null;
+        var pp = null;
+        var other = null;
+        var px = Expression.getMultivariatePolynomial(x.expression);
+        var py = Expression.getMultivariatePolynomial(y.expression);
+        //var xy = Expression.getMultivariatePolynomial(x.expression.multiply(y.expression));
+
+        //console.assert(px != null && py != null);
+
+        if (//xy != null &&
+            //x.operator === Condition.EQZ &&
+            //y.operator === Condition.EQZ &&
+            px != null && py != null) {
+
+          //if (px != null && px.p.getDegree() !== 1 && py == null) {
+            //py = {p: Polynomial.toPolynomial(y.expression, px.v), v: px.v};
+            //if (xy.v === py.v) {
+            //  py = null;
+            //}
+          //}
+          //if (px == null && py != null && py.p.getDegree() !== 1) {
+            //px = {p: Polynomial.toPolynomial(x.expression, py.v), v: py.v};
+            //if (xy.v === px.v) {
+            //  px = null;
+            //}
+          //}
+          //if (px == null && py == null) {//?TODO:
+          //  px = {p: Polynomial.toPolynomial(x.expression, xy.v), v: xy.v};
+          //  py = {p: Polynomial.toPolynomial(y.expression, xy.v), v: xy.v};
+          //}
+
+          if (x.operator === Condition.EQZ && px != null && px.p.getDegree() === 1 && y.operator === Condition.EQZ && py != null && py.p.getDegree() === 1) {
+            if (px.v.symbol < py.v.symbol) {//!
+              px = null;
+            }
+          }
+
+          if (y.operator === Condition.EQZ && py != null && py.p.getDegree() === 1) {
+            pp = py;
+            p = x.expression;
+            pOperator = x.operator;
+            other = y;
+          }
+          if (x.operator === Condition.EQZ && px != null && px.p.getDegree() === 1) {
+            pp = px;
+            p = y.expression;
+            pOperator = y.operator;
+            other = x;
+          }
+        }
+        if (pp != null) {
+          var polynomial = Polynomial.toPolynomial(p, pp.v);
+          var a = polynomial.calcAt(pp.p.getCoefficient(0).negate().divide(pp.p.getCoefficient(1)));
+          if (!a.equals(p) && (a.getDenominator() instanceof Expression.Integer)) {
+            var tmp = {
+              operator: pOperator,
+              expression: a
+            };
+            newArray = add(newArray, tmp);
+            if (newArray == null) {
+              return null;
+            }
+            if (true) {
+              newArray = add(newArray, other);
+              if (newArray == null) {
+                return null;
+              }
+              for (var j = i + 1; j < oldArray.length; j += 1) {
+                newArray = add(newArray, oldArray[j]);
+                if (newArray == null) {
+                  return null;
+                }
+              }
+              return newArray;
+            } else {
+              y = other;
+            }
+          } else {
+            newArray.push(x);
+          }
+        } else {
+          newArray.push(x);
+        }
+      }
+    }
+    newArray.push(y);
+    return newArray;
+  };
+  var newArray = add(this.array, {
+    operator: operator,
+    expression: e
+  });
+  if (newArray == null) {
+    return Condition.FALSE;
+  }
+  if (newArray.length === 0) {
+    return Condition.TRUE;
+  }
+  
+  return new Condition(newArray);
 };
 
+Condition.prototype.andNotZero = function (e) {
+  return this._and(Condition.NEZ, e);
+};
+Condition.prototype.andZero = function (e) {
+  return this._and(Condition.EQZ, e);
+};
+Condition.prototype.isFalse = function () {
+  return this === Condition.FALSE;
+};
+Condition.prototype.isTrue = function () {
+  return this === Condition.TRUE;
+};
+Condition.prototype.toString = function (options) {
+  if (this === Condition.TRUE || this === Condition.FALSE) {
+    // 1) no need; 2) no way to distinguish TRUE and FALSE
+    throw new TypeError();
+  }
+  if (this.array.length === 0) {
+    // assertion
+    throw new TypeError();
+  }
+  var s = '';
+  for (var i = 0; i < this.array.length; i += 1) {
+    s += (i !== 0 ? ', ' : '') + this.array[i].expression.toString(options) + (this.array[i].operator === Condition.NEZ ? ' != 0' : '') + (this.array[i].operator === Condition.EQZ ? ' == 0' : '');
+  }
+  return s;
+};
+
+Condition.TRUE = new Condition(new Array(0));
+Condition.FALSE = new Condition(undefined);
+
+self.Condition = Condition;
+
+})();
+(function () {
+"use strict";
+
+
+//TODO:
+//TODO:
+//TODO:
+
+//TODO: remove - ?
+
+
+
 //!TODO: remove
-Polynom.prototype.toString = function (options) {
+Polynomial.prototype.toString = function (options) {
   options = options || {};
   return this.toExpression(options.polynomialVariable || (new Expression.Symbol("x"))).toString(options);
 };
-Polynom.prototype.toMathML = function (options) {
+Polynomial.prototype.toMathML = function (options) {
   options = options || {};
   return this.toExpression(options.polynomialVariable || (new Expression.Symbol("x"))).toMathML(options);
 };
@@ -11429,49 +14306,88 @@ var printPartOfAddition = function (isLast, isFirst, coefficient, variable, opti
   if (coefficient.equals(Expression.ZERO)) {
     return (isLast && isFirst ? "<mn>0</mn>" : "");
   }
-  var sign1 = "+";
-  if (coefficient.isNegative()) {
-    sign1 = "&minus;";
-    coefficient = coefficient.negate();//?
+  var isNegative = false;
+  if (coefficient.isNegative() && !isFirst) {
+    isNegative = true;
+    coefficient = coefficient.negateCarefully();//?
   }
-  var coefficientString = coefficient.toMathML(options);
   var precedenceOfMultiptication = new Expression.Multiplication(Expression.ZERO, Expression.ZERO).getPrecedence();
   var areBracketsRequired = coefficient.getPrecedence() < precedenceOfMultiptication; //?
+  var c = coefficient.equals(Expression.ONE);
   //TODO: fix
-  return (isFirst && sign1 === "+" ? "" : "<mo>" + sign1 + "</mo>") +
-         (coefficient.equals(Expression.ONE) ? "" : (areBracketsRequired && coefficientString !== "" ? "<mfenced open=\"(\" close=\")\"><mrow>" + coefficientString + "</mrow></mfenced>" : coefficientString) + (coefficientString !== "" ? "<mo>&times;</mo>" : "")) +
-         variable.toMathML(options);
+  return (isFirst ? '' : '') +
+         (!isFirst && isNegative ? '<mo form="infix">&minus;</mo>' : '') +
+         (!isFirst && !isNegative ? '<mo form="infix">+</mo>' : '') +
+         (c ? '' : '<mrow>') +
+         (c || !areBracketsRequired ? '' : '<mrow><mo>(</mo>') +
+         (c ? '' : coefficient.toMathML(options)) +
+         (c || !areBracketsRequired ? '' : '<mo>)</mo></mrow>') +
+         (c ? '' : '<mo>&times;</mo>') +
+         variable.toMathML(options) +
+         (c ? '' : '</mrow>');
 };
 
-var polynomToExpression3 = function (matrix, row, variableSymbols) {
-  var pivotColumn = 0;
-  while (pivotColumn < matrix.cols() - 1 && matrix.e(row, pivotColumn).equals(Expression.ZERO)) {
-    pivotColumn += 1;
-  }
-  if (pivotColumn === matrix.cols() - 1) {
-    throw new Error();
-  }
-  var result = undefined;
-  for (var i = pivotColumn; i < matrix.cols() - 1; i += 1) {
-    var c = i === pivotColumn ? matrix.e(row, matrix.cols() - 1) : matrix.e(row, i).negate();
-    var v = i === pivotColumn ? undefined : variableSymbols[i];
-    if (!c.equals(Expression.ZERO)) {
-      var current = v == undefined ? c : (c.equals(Expression.ONE) ? v : new Expression.Multiplication(c, v));
-      result = result == undefined ? current : new Expression.Addition(result, current);
+
+var decimalToMathML = function (sign, number) {
+  return (sign < 0 ? "<mrow>" : "") + (sign < 0 ? "<mo>&minus;</mo>" : "") + "<mn>" + number + "</mn>" + (sign < 0 ? "</mrow>" : "");
+};
+var complexToMathML = function (real, imaginary) {
+  return '<mrow>' + real + (imaginary.indexOf('<mo>&minus;</mo>') !== -1 ? '<mo>&minus;</mo>' : '<mo>+</mo>') + (imaginary !== '' ? imaginary.replace(/<mrow><mo>&minus;<\/mo><mn>([^<]*)<\/mn><\/mrow>/g, '<mn>$1</mn>') + '<mo>&it;</mo>' : '') + '<mi>&ii;</mi>' + '</mrow>';
+};
+
+  function isConstant(e) {
+    if (e instanceof Expression.Symbol) {
+      return false;
     }
+    if (e instanceof Expression.NonSimplifiedExpression) {
+      return false;
+    }
+    if (e instanceof Expression.Matrix) {
+      return false;
+    }
+    if (e instanceof Expression.Polynomial) {
+      return false;
+    }
+    if (e instanceof Expression.BinaryOperation) {
+      return (e.a === Expression.E || isConstant(e.a)) && isConstant(e.b);
+    }
+    if (e instanceof Expression.Negation) {
+      return isConstant(e.b);
+    }
+    if (e instanceof Expression.Function) {
+      return isConstant(e.a);
+    }
+    return true;
   }
-  return result == undefined ? Expression.ZERO : result;
-};
 
+//TODO: move
 Expression.toDecimalString = function (x, options) {
-  var fractionDigits = options.fractionDigits;
-  if (fractionDigits >= 0 && !Expression.has(x, Expression.Symbol) && 
-                             !Expression.has(x, Expression.NonSimplifiedExpression) &&
-                             !Expression.has(x, Expression.Matrix) &&
-                             !Expression.has(x, Polynom)) {
-    return Expression.toDecimalStringInternal(x, fractionDigits, true);
+  var fractionDigits = options != null ? options.fractionDigits : -1;
+  if (fractionDigits >= 0 && isConstant(x)) {
+    return toDecimalStringInternal(x, fractionDigits, decimalToMathML, complexToMathML);
   }
   return undefined;
+};
+
+var getPrecedence = function (x, options) {
+  var fractionDigits = options != null ? options.fractionDigits : -1;
+  if (fractionDigits >= 0 && isConstant(x) && Expression.has(x, Expression.Complex)) {
+    return new Expression.Addition(Expression.ONE, Expression.ONE).getPrecedence();
+  }
+  return x.getPrecedence();
+};
+
+Expression.idCounter = 0;
+Expression.id = function () {
+  return (Expression.idCounter += 1).toString();
+};
+
+//TODO: ?
+Expression.escapeHTML = function (s) {
+  return s.replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
 };
 
 Expression.Matrix.prototype.toMathML = function (options) {
@@ -11480,7 +14396,7 @@ Expression.Matrix.prototype.toMathML = function (options) {
 
   var useMatrixContainer = options.useMatrixContainer == undefined ? true : options.useMatrixContainer;
   //TODO: fix!
-  var braces = options.useBraces == undefined ? ["(", ")"] : options.useBraces;
+  var braces = options.useBraces == undefined ? undefined : options.useBraces;
   var columnlines = options.columnlines == undefined ? 0 : options.columnlines;
   var variableNames = options.variableNames == undefined ? undefined : options.variableNames;
 
@@ -11512,15 +14428,14 @@ Expression.Matrix.prototype.toMathML = function (options) {
   var cols = x.cols();
   var i = -1;
 
+  //TODO: remove `Expression.id()`
   var containerId = options.idPrefix + "-" + Expression.id();
   if (useMatrixContainer) {
     result += "<munder>";
-    result += "<mrow>";
-    result += "<menclose notation=\"none\" href=\"#\" id=\"" + containerId + "\" data-matrix=\"" + Utils.escapeHTML(x.toString()) + "\" draggable=\"true\" tabindex=\"0\" contextmenu=\"matrix-menu\">";
+    result += "<menclose notation=\"none\" id=\"" + containerId + "\" data-matrix=\"" + Expression.escapeHTML(x.toString()) + "\" draggable=\"true\" tabindex=\"0\" contextmenu=\"matrix-menu\">";
   }
 
-  result += "<mfenced open=\"" + braces[0] + "\" close=\"" + braces[1] + "\">";
-  result += "<mrow>";
+  result += braces == undefined ? '<mrow><mo>(</mo>' : '<mrow>' + (braces[0] === ' ' ? '' : '<mo>' + braces[0] + '</mo>');
   var columnlinesAttribute = "";
   if (columnlines !== 0 && cols - 1 > 0) {
     var k = -1;
@@ -11535,9 +14450,8 @@ Expression.Matrix.prototype.toMathML = function (options) {
   result += "<mtable" + (useColumnspacing ? " rowspacing=\"0ex\"" + " columnspacing=\"0em\"" : " rowspacing=\"0ex\"") + (variableNames != undefined ? " columnalign=\"right\"" : "") + (columnlinesAttribute !== "" ? " columnlines=\"" + columnlinesAttribute + "\"" : "") + ">";
   while (++i < rows) {
     var j = -1;
-    result += "<mtr>";
     if (variableNames != undefined) {// TODO: fix?
-      //TODO: use code from polynomToExpression3 (shared)
+      //TODO: use code from polynomialToExpression3 (shared)
       var row = "";
       var wasNotZero = false;
       while (++j < cols - 1) {
@@ -11549,17 +14463,22 @@ Expression.Matrix.prototype.toMathML = function (options) {
       }
       row += "<mtd><mo>=</mo></mtd><mtd>" + x.e(i, cols - 1).toMathML(options) + "</mtd>";
       if (wasNotZero || !x.e(i, cols - 1).equals(Expression.ZERO)) {
+        result += "<mtr>";
         result += row;
+        result += "</mtr>";
       }
     } else {
+      result += "<mtr>";
       while (++j < cols) {
         result += "<mtd" + (cellIdGenerator != undefined ? " id=\"" + cellIdGenerator(i, j) + "\"" : "") + ">";
         if (pivotCell != undefined && i === pivotCell.i && j === pivotCell.j) {
           result += "<mstyle mathvariant=\"bold\">";
           result += "<menclose notation=\"circle\">";
         }
-        if (verticalStrike !== -1 || horizontalStrike !== -1) {
-          result += "<menclose notation=\"none " + (verticalStrike === j ? " " + "verticalstrike" : "") + (horizontalStrike === i ? " " + "horizontalstrike" : "") + "\">";
+        if (verticalStrike === j || horizontalStrike === i) {
+          var notation = ((verticalStrike === j ? " " + "verticalstrike" : "") +
+                          (horizontalStrike === i ? " " + "horizontalstrike" : "")).slice(1);
+          result += "<menclose notation=\"" + notation + "\">";
         }
         if (useColumnspacing) {
           result += "<mpadded width=\"+0.8em\" lspace=\"+0.4em\">";
@@ -11576,7 +14495,7 @@ Expression.Matrix.prototype.toMathML = function (options) {
         if (useColumnspacing) {
           result += "</mpadded>";
         }
-        if (verticalStrike !== -1 || horizontalStrike !== -1) {
+        if (verticalStrike === j || horizontalStrike === i) {
           result += "</menclose>";
         }
         if (pivotCell != undefined && i === pivotCell.i && j === pivotCell.j) {
@@ -11585,22 +14504,18 @@ Expression.Matrix.prototype.toMathML = function (options) {
         }
         result += "</mtd>";
       }
+      result += "</mtr>";
     }
-    result += "</mtr>";
   }
   result += "</mtable>";
-  result += "</mrow>";
-  result += "</mfenced>";
+  result += braces == undefined ? '<mo>)</mo></mrow>' : (braces[1] === ' ' ? '' : '<mo>' + braces[1] + '</mo>') + '</mrow>';
 
   if (useMatrixContainer) {
     result += "</menclose>";
-    result += "</mrow>";
 
-    result += "<mrow>";
-    result += "<mtext data-x=\"TODO\">";
-    result += "<button type=\"button\" class=\"matrix-menu-show matrix-menu-show-new\" data-for-matrix=\"" + containerId + "\" aria-haspopup=\"true\">&#x2630;</button>";
+    result += "<mtext>";
+    result += "<button type=\"button\" class=\"matrix-menu-show\" data-for-matrix=\"" + containerId + "\" aria-haspopup=\"true\"></button>";
     result += "</mtext>";
-    result += "</mrow>";
 
     result += "</munder>";
   }
@@ -11617,48 +14532,62 @@ Expression.Determinant.prototype.toMathML = function (options) {
     //TODO: fix
     return x.a.toMathML(options);
   }
-  return "<mfenced open=\"" + "|" + "\" close=\"" + "|" + "\"><mrow>" + x.a.toMathML(options) + "</mrow></mfenced>";
+  return "<mrow><mo>|</mo>" + x.a.toMathML(options) + "<mo>|</mo></mrow>";
 };
 Expression.Transpose.prototype.toMathML = function (options) {
   var x = this;
   //TODO: ^T ?
   // https://www.w3.org/TR/MathML3/chapter4.html#contm.transpose
-  return "<msup><mrow>" + x.a.toMathML(options) + "</mrow><mrow><mi>T</mi></mrow></msup>";
+  return "<msup>" +
+         x.a.toMathML(options) +
+         "<mi>T</mi>" +
+         "</msup>";
 };
 Expression.SquareRoot.prototype.toMathML = function (options) {
   var d = Expression.toDecimalString(this, options);
   if (d != undefined) {
     return d;
   }
-  return "<msqrt><mrow>" + this.a.toMathML(Expression.setTopLevel(true, options)) + "</mrow></msqrt>";
+  return "<msqrt>" +
+         this.a.toMathML(Expression.setTopLevel(true, options)) +
+         "</msqrt>";
 };
 Expression.CubeRoot.prototype.toMathML = function (options) {
   var d = Expression.toDecimalString(this, options);
   if (d != undefined) {
     return d;
   }
-  return "<mroot><mrow>" + this.a.toMathML(Expression.setTopLevel(true, options)) + "</mrow><mrow><mi>" + 3 + "</mi></mrow></mroot>";
+  return "<mroot>" +
+         this.a.toMathML(Expression.setTopLevel(true, options)) +
+         "<mi>" + 3 + "</mi>" +
+         "</mroot>";
 };
 Expression.NthRoot.prototype.toMathML = function (options) {
   var d = Expression.toDecimalString(this, options);
   if (d != undefined) {
     return d;
   }
-  return "<mroot><mrow>" + this.a.toMathML(Expression.setTopLevel(true, options)) + "</mrow><mrow><mi>" + this.n + "</mi></mrow></mroot>";
+  return "<mroot>" +
+         this.a.toMathML(Expression.setTopLevel(true, options)) +
+         "<mi>" + this.n + "</mi>" +
+         "</mroot>";
 };
 Expression.Function.prototype.toMathML = function (options) {
   var x = this;
   var fa = !(x.a instanceof Expression.Matrix) && !(x.a instanceof NonSimplifiedExpression && x.a.e instanceof Expression.Matrix);//?
   //TODO: fix
   return "<mrow>" +
-         "<mi>" + (x.name === "rank" ? i18n.rankDenotation : (x.name === "sin" ? i18n.sinDenotation : (x.name === "tan" ? i18n.tanDenotation : x.name))) + "</mi>" +
-         "<mo>&#x2061;</mo>" +
-         (fa ? "<mfenced open=\"(\" close=\")\"><mrow>" : "") +
+         (typeof i18n !== "undefined" ? "<mi>" + (x.name === "rank" ? i18n.rankDenotation : (x.name === "sin" ? i18n.sinDenotation : (x.name === "tan" ? i18n.tanDenotation : x.name))) + "</mi>" : "<mi>" + x.name + "</mi>") +
+         "<mo>&af;</mo>" +
+         (fa ? "<mrow><mo>(</mo>" : "") +
          x.a.toMathML(Expression.setTopLevel(true, options)) +
-         (fa ? "</mrow></mfenced>" : "") +
+         (fa ? "<mo>)</mo></mrow>" : "") +
          "</mrow>";
 };
 Expression.Division.prototype.toMathML = function (options) {
+  if (options != null && options.nofractions) {
+    return Expression.BinaryOperation.prototype.toMathML.call(this, options);
+  }
   var d = Expression.toDecimalString(this, options);
   if (d != undefined) {
     return d;
@@ -11668,10 +14597,14 @@ Expression.Division.prototype.toMathML = function (options) {
   var numerator = x.getNumerator();
   //???
   //if (numerator.isNegative()) {
-  //  return "<mrow><mo>&minus;</mo>" + x.negate().toMathML(options) + "</mrow>";
+  //  return "<mrow><mo>&minus;</mo>" + x.negateCarefully().toMathML(options) + "</mrow>";
   //}
-  return "<mfrac><mrow>" + numerator.toMathML(Expression.setTopLevel(true, options)) + "</mrow><mrow>" + denominator.toMathML(Expression.setTopLevel(true, options)) + "</mrow></mfrac>";
+  return "<mfrac>" +
+         numerator.toMathML(Expression.setTopLevel(true, options)) + 
+         denominator.toMathML(Expression.setTopLevel(true, options)) +
+         "</mfrac>";
 };
+
 Expression.Integer.prototype.toMathML = function (options) {
   var d = Expression.toDecimalString(this, options);
   if (d != undefined) {
@@ -11679,13 +14612,51 @@ Expression.Integer.prototype.toMathML = function (options) {
   }
   var x = this;
   var tmp = x.toString();
-  return (tmp.slice(0, 1) === "-" ? "<mo>&minus;</mo><mn>" + tmp.slice(1) + "</mn>" : "<mn>" + tmp + "</mn>");
+  return tmp.slice(0, 1) === "-" ? "<mrow>" + "<mo>&minus;</mo>" + "<mn>" + tmp.slice(1) + "</mn>" + "</mrow>" : "<mn>" + tmp + "</mn>";
 };
 Expression.BinaryOperation.prototype.toMathML = function (options) {
+  if (options != null &&
+      options.fractionDigits >= 0 &&
+      this.unwrap() instanceof Expression.Exponentiation &&
+      this.unwrap().a.unwrap() instanceof Expression.Symbol &&
+      this.unwrap().a.unwrap() !== Expression.E &&
+      (this.unwrap().b.unwrap() instanceof Expression.Integer || this.unwrap().b.unwrap() instanceof Expression.Negation && this.unwrap().b.unwrap().b.unwrap() instanceof Expression.Integer)) {
+    options = Object.assign({}, options, {fractionDigits: -1});
+  }
   var d = Expression.toDecimalString(this, options);
   if (d != undefined) {
     return d;
   }
+
+  //!2019-05-16
+  if (this instanceof Expression.Addition) {
+    var s = [];
+    var b = null;
+    for (var additions = this.summands(), x = additions.next().value; x != null; x = additions.next().value) {
+      if (b != null) {
+        var n = false;
+        if (b.isNegative()) {
+          n = true;
+          b = b.negateCarefully();
+        }
+        var fence = this.getPrecedence() >= getPrecedence(b, options);
+        fence = fence || b.isUnaryPlusMinus();
+        s.push((fence ? '<mrow><mo>(</mo>' : '') + b.toMathML(Expression.setTopLevel(fence, options)) + (fence ? '<mo>)</mo></mrow>' : ''));
+        s.push(n ? '<mo>&minus;</mo>' : '<mo>+</mo>');
+      }
+      b = x;
+    }
+    s = s.reverse().join('');
+    var a = b;
+    var fence = a.getPrecedence() + (a.isRightToLeftAssociative() ? -1 : 0) < this.getPrecedence();
+    if (options != undefined && options.isTopLevel != undefined && options.isTopLevel === false) {
+      fence = fence || a.isUnaryPlusMinus();
+    }
+    s = (fence ? "<mrow><mo>(</mo>" : "") + a.toMathML(Expression.setTopLevel(fence || options == undefined || options.isTopLevel, options)) + (fence ? "<mo>)</mo></mrow>" : "") + s;
+    return '<mrow>' + s + '</mrow>';
+  }
+
+  //!
   var a = this.a;
   var b = this.b;
   var isSubtraction = false;
@@ -11706,26 +14677,31 @@ Expression.BinaryOperation.prototype.toMathML = function (options) {
   var s = isSubtraction ? "-" : this.getS();
 
   if (this instanceof Expression.Exponentiation) {
+    if (a.unwrap() === Expression.E && b.unwrap() instanceof Expression.Matrix) {
+      return '<mrow><mi>exp</mi><mo>&af;</mo>' + b.toMathML(options) + '</mrow>';
+    }
+    var boptions = options;
+    if (!(a.unwrap() instanceof Expression.Matrix)) {
+      boptions = Object.assign({}, options || {}, {nofractions: true});
+    }
+
       return "<msup>" + 
-             "<mrow>" +
-             (fa ? "<mfenced open=\"(\" close=\")\"><mrow>" : "") + a.toMathML(Expression.setTopLevel(fa || options == undefined || options.isTopLevel, options)) + (fa ? "</mrow></mfenced>" : "") +
-             "</mrow>" +
-             "<mrow>" +
-             (fb ? "<mfenced open=\"(\" close=\")\"><mrow>" : "") + b.toMathML(Expression.setTopLevel(fb, options)) + (fb ? "</mrow></mfenced>" : "") + 
-             "</mrow>" +
+             (fa ? "<mrow><mo>(</mo>" : "") + a.toMathML(Expression.setTopLevel(fa || options == undefined || options.isTopLevel, options)) + (fa ? "<mo>)</mo></mrow>" : "") +
+             (fb ? "<mrow><mo>(</mo>" : "") + b.toMathML(Expression.setTopLevel(fb, boptions)) + (fb ? "<mo>)</mo></mrow>" : "") + 
              "</msup>";
   }
   if (this.isNegation()) {
     // assert(fa === false);
-      return "<mrow><mo>&minus;</mo>" + (fb ? "<mfenced open=\"(\" close=\")\"><mrow>" : "") + b.toMathML(Expression.setTopLevel(fb, options)) + (fb ? "</mrow></mfenced>" : "") + "</mrow>";
-  }
+      return "<mrow><mo>&minus;</mo>" + (fb ? "<mrow><mo>(</mo>" : "") + b.toMathML(Expression.setTopLevel(fb, options)) + (fb ? "<mo>)</mo></mrow>" : "") + "</mrow>";
+  }  
   //TODO: fix spaces (matrix parsing)
   return "<mrow>" + 
-         (fa ? "<mfenced open=\"(\" close=\")\"><mrow>" : "") + a.toMathML(Expression.setTopLevel(fa || options == undefined || options.isTopLevel, options)) + (fa ? "</mrow></mfenced>" : "") +
-         "<mo>" + (s === "*" ? "&times;" : (s === "-" ? "&minus;" : s)) + "</mo>" + 
-         (fb ? "<mfenced open=\"(\" close=\")\"><mrow>" : "") + b.toMathML(Expression.setTopLevel(fb, options)) + (fb ? "</mrow></mfenced>" : "") + 
+         (fa ? "<mrow><mo>(</mo>" : "") + a.toMathML(Expression.setTopLevel(fa || options == undefined || options.isTopLevel, options)) + (fa ? "<mo>)</mo></mrow>" : "") +
+         (s === '*' ? '<mo>&times;</mo>' : (s === '-' ? '<mo>&minus;</mo>' : (s === '/' ? '<mo>&#x2215;</mo>' : '<mo>' + s + '</mo>'))) +
+         (fb ? "<mrow><mo>(</mo>" : "") + b.toMathML(Expression.setTopLevel(fb, options)) + (fb ? "<mo>)</mo></mrow>" : "") + 
          "</mrow>";
 };
+
 Expression.Symbol.prototype.toMathML = function (options) {
   var x = this;
   var s = x.symbol;
@@ -11739,9 +14715,12 @@ Expression.Symbol.prototype.toMathML = function (options) {
                        indexes[j] +
                        (/^\d+$/.exec(indexes[j]) != undefined ? "</mn>" : "</mi>");
     }
+    if (indexes.length > 1) {
+      indexesMathML = "<mrow>" + indexesMathML + "</mrow>";
+    }
     return "<msub>" + 
-           "<mrow>" + "<mi>" + s.slice(0, i) + "</mi>" + "</mrow>" +
-           "<mrow>" + indexesMathML + "</mrow>" + 
+           "<mi>" + s.slice(0, i) + "</mi>" +
+           indexesMathML +
            "</msub>";
   }
   return "<mi>" + s + "</mi>";
@@ -11751,11 +14730,846 @@ Expression.Negation.prototype.toMathML = function (options) {
   var fb = this.getPrecedence() + (this.isRightToLeftAssociative() ? -1 : 0) >= b.getPrecedence();
   fb = fb || b.isUnaryPlusMinus();
   // assert(fa === false);
-  return "<mrow><mo>&minus;</mo>" + (fb ? "<mfenced open=\"(\" close=\")\"><mrow>" : "") + b.toMathML(Expression.setTopLevel(fb, options)) + (fb ? "</mrow></mfenced>" : "") + "</mrow>";
+  return "<mrow><mo>&minus;</mo>" + (fb ? "<mrow><mo>(</mo>" : "") + b.toMathML(Expression.setTopLevel(fb, options)) + (fb ? "<mo>)</mo></mrow>" : "") + "</mrow>";
 };
 
+Condition.prototype.toMathML = function (options) {
+  if (this === Condition.TRUE || this === Condition.FALSE) {
+    // 1) no need; 2) no way to distinguish TRUE and FALSE
+    throw new TypeError();
+  }
+  if (this.array.length === 0) {
+    // assertion
+    throw new TypeError();
+  }
+  var s = '';
+  for (var i = 0; i < this.array.length; i += 1) {
+    s += (i !== 0 ? '<mo>,</mo>' : '');
+    s += '<mrow>';
+    s += this.array[i].expression.toMathML(options) + (this.array[i].operator === Condition.NEZ ? '<mo>&ne;</mo><mn>0</mn>' : '') + (this.array[i].operator === Condition.EQZ ? '<mo>=</mo><mn>0</mn>' : '');
+    s += '</mrow>';
+  }
+  return this.array.length === 1 ? s : '<mrow>' + s + '</mrow>';
+};
+
+Expression.Complex.prototype.toMathML = function (options) {
+  return this.toStringInternal(options, "<mo>&it;</mo>", "<mi>&ii;</mi>", "<mo>&minus;</mo>", "<mo>+</mo>", "<mrow>", "</mrow>", function (x, options) { return x.toMathML(options); });
+};
+
+Expression.GF2.prototype.toMathML = function (options) {
+  //TODO: fix
+  return this.a.toMathML(options);
+};
+Expression.GF2Value.prototype.toMathML = function (options) {
+  return "<mrow>" + "<mn>" + this.value.toString() + "</mn>" + "</mrow>";
+};
+Expression.Degrees.prototype.toMathML = function (options) {
+  return "<mrow>" + this.value.toMathML(options) + "<mo>&it;</mo><mi>&deg;</mi></mrow>";
+};
+
+NonSimplifiedExpression.prototype.toMathML = function (options) {
+  //?
+  //options = options.fractionDigits >= 0 ? Object.assign({}, options, {fractionDigits: -1}) : options;
+  if (options != null && options.printId != undefined) {
+    return "<mrow id=\"" + this.getId() + "\">" + this.e.toMathML(options) + "</mrow>";
+  }
+  return this.e.toMathML(options);
+};
+  
 Expression.prototype.toMathML = function (options) {
-  throw new Error();
+  throw new TypeError();
+};
+
+})();
+(function () {
+"use strict";
+// https://en.wikipedia.org/wiki/Quadratic_integer
+// https://en.wikipedia.org/wiki/Factorization#Unique_factorization_domains
+/*global Expression*/
+
+
+
+
+
+/*
+
+      if (qi instanceof QuadraticInteger && qi.a < 0 || qi.b < 0) {
+        var c = pow(qi.conjugate(), n, new QuadraticInteger(1, 0, qi.D));
+        return qi.multiply(c).toExpression()._nthRoot(n).divide(new QuadraticInteger(Math.abs(qi.a), Math.abs(qi.b), qi.D).toExpression());
+      }
+
+*/
+
+  function ngcd(a, b) {
+    while (b != 0) {
+      var t = a % b;
+      a = b;
+      b = t;
+    }
+    return a;
+  }
+
+// a + b*sqrt(D)
+function QuadraticInteger(a, b, D) {
+  //TODO:
+  if (typeof a === "number" && Math.abs(a) > 9007199254740991) {
+    throw new TypeError();
+  }
+  if (typeof b === "number" && Math.abs(b) > 9007199254740991) {
+    throw new TypeError();
+  }
+  this.a = a;
+  this.b = b;
+  this.D = D;
+}
+QuadraticInteger.prototype.multiply = function (y) {
+  var x = this;
+  if (x.D !== y.D) {
+    throw new TypeError();
+  }
+  var t = function (value) {
+    if (typeof a === "number" && Math.abs(a) > 9007199254740991) {
+      throw new TypeError();
+    }
+    return value;
+  };
+  return new QuadraticInteger(t(x.a * y.a) + t(x.b * y.b * y.D), t(x.a * y.b) + t(x.b * y.a), x.D);
+};
+QuadraticInteger.prototype.conjugate = function (y) {
+  return new QuadraticInteger(this.a, -this.b, this.D);
+};
+QuadraticInteger.prototype.norm = function () {
+  //var x = this.a * this.a;
+  //var y = this.b * this.b;
+  //return x % this.D + (((x - x % this.D) / this.D) - y) * this.D;
+  var a = BigInteger.BigInt(this.a);
+  var b = BigInteger.BigInt(this.b);
+  var D = BigInteger.BigInt(this.D);
+  var aa = BigInteger.multiply(a, a);
+  var bb = BigInteger.multiply(b, b);
+  var norm = BigInteger.toNumber(BigInteger.subtract(aa, BigInteger.multiply(bb, D)));
+  if (typeof norm === "number" && Math.abs(norm) > 9007199254740991) {
+    throw new TypeError();
+  }
+  return norm;
+};
+QuadraticInteger.prototype.truncatingDivideInteger = function (x) {
+  return new QuadraticInteger(x.toBigInt(), Expression.ZERO.toBigInt(), this.D).truncatingDivide(this);
+};
+QuadraticInteger.prototype.truncatingDivide = function (y) {
+  if (!(y instanceof QuadraticInteger)) {
+    if (y instanceof AlmostQuadraticInteger) {
+      return null;
+    }
+    y = new QuadraticInteger(y.toBigInt(), Expression.ZERO.toBigInt(), this.D);
+  }
+  var x = this;
+  if (x.D !== y.D) {
+    throw new TypeError();
+  }
+  var n = x.multiply(y.conjugate());
+  var d = y.norm();
+  return n.a % d == 0 && n.b % d == 0 ? new QuadraticInteger(n.a / d, n.b / d, x.D) : null;
+};
+QuadraticInteger.prototype.negate = function () {
+  return new QuadraticInteger(-this.a, -this.b, this.D);
+};
+
+/*
+function primeFactor(n) {
+  var i = n - n;
+  ++i;
+  ++i;
+  if (n % i == 0) {
+    return i;
+  }
+  ++i;
+  while (i * i <= n) {
+    if (n % i == 0) {
+      return i;
+    }
+    ++i;
+    ++i;
+  }
+  return n;
+}
+*/
+function primeFactorX(n) {
+  if (typeof n !== "number") {
+    return BigInt(primeFactor(BigInteger.BigInt(n.toString())));
+  }
+  return primeFactor(BigInteger.BigInt(n));
+}
+function factors(n) {
+  if (n < 1) {
+    throw new TypeError();
+  }
+  var p = n > 1 ? primeFactorX(n) : n / n;
+  var t = n / n;
+  var f = null;
+  var fs = null;
+  var i = n / n;
+  return {
+    //[Symbol.iterator]: function () {
+    //  return this;
+    //},
+    //get done() {
+    //  return this.value == null;
+    //},
+    value: null,
+    next: function () {
+      if (p == 1) {
+        this.value = null;
+        return this;
+      }
+      if (fs == null) {
+        if (n % p == 0) {
+          t *= p;
+          n /= p;
+          this.value = t;
+          return this;
+        }
+        fs = factors(n);
+        i = t;
+      }
+      if (i === t) {
+        i = i / i;
+        f = fs.next().value;
+      } else {
+        i *= p;
+      }
+      this.value = f == null ? null : f * i;
+      return this;
+    }
+  };
+}
+
+QuadraticInteger._factors = function (n) {
+  return factors(n);
+};
+
+function abs(a) {
+  return a < 0 ? -a : (a - a) + a;
+}
+
+QuadraticInteger.prototype.primeFactor = function () {
+
+  function gcd(a, b) {
+    return b == 0 ? a : gcd(b, a % b);
+  }
+
+  function sqrt(n) {
+    //?
+    if (typeof n === "number") {
+      return Math.floor(Math.sqrt(n));
+    }
+    return BigInt(nthRoot(BigInteger.BigInt(n.toString()), 2).toString());
+  }
+
+  var a = this.a;
+  var b = this.b;
+  var D = this.D;
+  if (g == D) {//TODO: g != 1 - ?
+    return new QuadraticInteger(a - a, b / b, g);
+  }
+  var g = abs(gcd(a, b));
+  if (g != 1) {
+    //TODO:
+    //return new QuadraticInteger(primeFactor(Math.abs(g)), 0, D);
+    return new QuadraticInteger(QuadraticInteger._factors(g).next().value, b - b, D);
+  }
+  var g = abs(gcd(a, D));
+  var norm = this.norm();
+  function quadraticIntegers(norm, D, b) {
+    while (true) {
+      if (typeof norm === "number") {//TODO: 
+      if (-norm + D * b * b > 9007199254740991 || norm + D * b * b > 9007199254740991) {
+        throw new RangeError(norm);
+      }
+      }
+      var guess = norm + D * b * b;
+      if (guess >= 0) {
+        var a = sqrt(guess);
+        if (guess === a * a) { // && Math.abs(gcd(a, b)) === 1
+          return new QuadraticInteger(a, b, D);
+        }
+      }
+      var guess = -norm + D * b * b;
+      if (guess >= 0) {
+        var a = sqrt(guess);
+        if (guess === a * a) { // && Math.abs(gcd(a, b)) === 1
+          return new QuadraticInteger(a, b, D);
+        }
+      }
+      ++b;
+    }
+  }
+  if (a == 0 || b == 0) {
+    return this;
+  }
+  if (norm == 1 || norm == -1) {
+    // https://en.wikipedia.org/wiki/Quadratic_field#Orders_of_quadratic_number_fields_of_small_discriminant
+    var unit = quadraticIntegers(D / D, D, D / D);
+    var uniti = unit.conjugate();
+    var x = this;
+    if (x.b * x.a < 1) {
+      return x.a < 0 ? uniti.negate() : uniti;
+    }
+    return unit;
+  }
+
+  var v = this;
+  for (var fs = factors(abs(norm)), p = fs.next().value; p != null; p = fs.next().value) {
+    // ? https://www.johndcook.com/blog/2008/11/17/fast-way-to-test-whether-a-number-is-a-square/
+    /*if (D === 17) {
+      var t = Math.abs(norm);
+      while (t % 2 === 0) {
+        t /= 2;
+      }
+      p = t === 1 ? norm : primeFactor(t);
+    }*/
+    if (p == 2 && (D == 5 || D == 13 || D == 17 || D == 21 || D == 29 || D == 33 || D == 41 || D == 57)) {
+      //p = 4;
+      p = p - p;
+      ++p;
+      ++p;
+      ++p;
+      ++p;
+    }
+    var i = quadraticIntegers(p, D, D - D);
+    //console.log(i + '');
+    var x = v.truncatingDivide(i);
+    if (x != null) {
+      return i;
+    }
+    var x = v.truncatingDivide(i.conjugate());
+    if (x != null) {
+      return i.conjugate();
+    }// 1+9sqrt(2)
+  }
+  //console.log('!');
+  return this;
+  //throw new TypeError();
+};
+QuadraticInteger.prototype.toString = function () {
+  return this.a + '+' + this.b + 'sqrt(' + this.D + ')';
+};
+QuadraticInteger.prototype.isUnit = function () {
+  var n = this.norm();
+  return n == 1 || n == -1;
+};
+QuadraticInteger.prototype.equals = function (y) {
+  var x = this;
+  if (y.equals(Expression.ZERO)) {
+    return x.a == 0 && x.b == 0;
+  }
+  if (y.equals(Expression.ONE)) {
+    return x.a == 1 && x.b == 0;
+  }
+  if (!(y instanceof QuadraticInteger)) {
+    throw new TypeError();
+  }
+  return x.a === y.a && x.b === y.b && x.D === y.D;
+};
+QuadraticInteger.prototype.subtract = function (y) {
+  var x = this;
+  if (x.D !== y.D) {
+    throw new TypeError();
+  }
+  return new QuadraticInteger(x.a - y.a, x.b - y.b, x.D);
+};
+QuadraticInteger.prototype.isDivisibleBy = function (y) {
+  if (y instanceof AlmostQuadraticInteger) {
+    var q = this.truncatingDivide(y.qi);
+    return q == null ? null : q.truncatingDivide(y.k);
+  }
+  return this.truncatingDivide(y) != null;
+};
+QuadraticInteger.prototype.isDivisibleByInteger = function (x) {
+  return x.truncatingDivide(this) != null;
+};
+QuadraticInteger.prototype.remainder = function (y) {
+  if (!(y instanceof QuadraticInteger)) {
+    if (y instanceof AlmostQuadraticInteger) {
+      if (ngcd(this.a, this.b) != 0) {
+        //?TODO:
+      }
+      var nk = y.k;
+      var remainder = this.remainder(y.qi);
+      if (remainder.equals(Expression.ZERO)) {
+        return remainder;
+      }
+      if (remainder.b == 0) {
+        return nk;
+      }
+      if (abs(ngcd(remainder.a, remainder.b)) != 1) {
+        var i = Expression.Integer.fromBigInt(abs(ngcd(remainder.a, remainder.b)));
+        nk = nk.multiply(i);
+        remainder = remainder.truncatingDivide(i);
+      }
+      return new AlmostQuadraticInteger(nk, remainder);
+    }
+    if (y instanceof Expression.Multiplication && y.a instanceof Expression.Integer && y.b instanceof Expression.SquareRoot) {
+      return this.remainder(new QuadraticInteger(Expression.ZERO.toBigInt(), y.a.toBigInt(), y.b.a.toBigInt()));
+    }
+    y = new QuadraticInteger(y.toBigInt(), Expression.ZERO.toBigInt(), this.D);
+  }
+  var x = this;
+  if (x.D !== y.D) {
+    throw new TypeError();
+  }
+  var n = x.multiply(y.conjugate());
+  var d = y.norm();
+  if (d == 1 || d == -1) { // y.isUnit()
+    return x.subtract(x);
+  }
+  var q1 = (n.a - n.a % d) / d;
+  var q2 = (n.b - n.b % d) / d;
+  if (q1 == 0 && q2 == 0) {
+    if (abs(x.norm()) >= abs(y.norm())) {
+      //?
+      if (x.a > y.a && y.a > 0) {
+        return x.subtract(y.multiply(new QuadraticInteger((x.a - x.a % y.a) / y.a, x.D - x.D, x.D)));
+      }
+      if (x.a > -y.a && y.a < 0) {
+        return x.subtract(y.multiply(new QuadraticInteger((x.a - x.a % -y.a) / -y.a, x.D - x.D, x.D)));
+      }
+      if (y.b == 0) {
+        return new QuadraticInteger(x.D.constructor(1), x.D - x.D, x.D);//?
+      }
+    throw new RangeError("NotSupportedError");//TODO:!!!
+    }
+  }
+  var q = new QuadraticInteger(q1, q2, x.D);
+  return x.subtract(y.multiply(q));
+};
+QuadraticInteger.prototype.remainderInteger = function (x) {
+  return new QuadraticInteger(x.toBigInt(), Expression.ZERO.toBigInt(), this.D).remainder(this);
+};
+QuadraticInteger.prototype.toExpression = function () {
+  return Expression.Integer.fromBigInt(this.a).add(Expression.Integer.fromBigInt(this.b).multiply(Expression.Integer.fromBigInt(this.D).squareRoot()));
+};
+
+//TODO: merge with the QuadraticInteger.toQuadraticInteger
+QuadraticInteger.prototype.isValid = function () {
+  var qq = this;
+  //TODO: 6, 21, 33, 37, 57, 73
+  if (' 2, 3, 5, 7, 11, 13, 17, 19, 29, 41, 6, 21, 33, 57,'.indexOf(' ' + qq.D + ',') === -1) { // https://oeis.org/A048981
+    return false;
+  }
+  var g = qq != null ? ngcd(qq.a, qq.b) : null;
+  //var g = 1;
+  //return (typeof qq.a === "bigint" || (qq.a / g) * (qq.a / g) < 9007199254740991 && (qq.b / g) * (qq.b / g) < 9007199254740991);
+  return true;
+};
+QuadraticInteger.prototype.isPositive = function () {
+  var qq = this;
+  return qq.a > 0 && qq.b > 0 || qq.a > 0 && qq.norm() > 0 || qq.b > 0 && qq.norm() < 0;
+};
+
+self.QuadraticInteger = QuadraticInteger;
+
+
+// new QuadraticInteger(1, 1, 2).remainder(new QuadraticInteger(1, 1, 2))
+// new QuadraticInteger(2, 2, 2).truncatingDivide(new QuadraticInteger(2, 2, 2))
+
+//!
+function toQuadraticInteger(e) {
+  if (e instanceof Expression.Addition) {
+    var g = e.a.gcd(e.b);
+    if (!g.equals(Expression.ONE)) {
+      var qi = toQuadraticInteger(e.divide(g));
+      return qi == null ? null : new AlmostQuadraticInteger(g, qi);
+    }
+  }
+  // qq.a * qq.a + qq.D * qq.b * qq.b < 9007199254740991
+  if (e instanceof Expression.Addition &&
+      e.b instanceof Expression.Integer &&
+      e.a instanceof Expression.SquareRoot &&
+      e.a.a instanceof Expression.Integer) {
+    return new QuadraticInteger(e.b.toBigInt(), Expression.ONE.toBigInt(), e.a.a.toBigInt());
+  }
+  if (e instanceof Expression.Addition &&
+      e.b instanceof Expression.Integer &&
+      e.a instanceof Expression.Multiplication &&
+      e.a.a instanceof Expression.Integer &&
+      e.a.b instanceof Expression.SquareRoot &&
+      e.a.b.a instanceof Expression.Integer) {
+    return new QuadraticInteger(e.b.toBigInt(), e.a.a.toBigInt(), e.a.b.a.toBigInt());
+  }
+}
+//!
+
+QuadraticInteger.toQuadraticInteger = toQuadraticInteger;
+
+/*
+QuadraticInteger.prototype.compareTo = function (e) {
+  if (e === Expression.ZERO) {
+    var n = this.a * this.a - this.b * this.b * this.D;
+    return this.a === 0 && this.b === 0 ? 0 : (this.a < 0 && this.b < 0 || this.a < 0 && n > 0 || this.b < 0 && n < 0 ? -1 : 1);
+  }
+  if (e === Expression.ONE) {
+    return this.a === 1 && this.b === 0 ? 0 : 1;
+  }
+  throw new TypeError();
+};
+*/
+
+
+
+  //
+
+/*
+
+    if (n === 2) {
+      function gcd(a, b) {
+        return b === 0 ? a : gcd(b, a % b);
+      }
+      var q = isQuadraticInteger(x);
+      //TODO: (q.D === 2 || q.D === 3 || q.D === 5 || q.D === 17)
+      
+      if (q != null && q.D === 2 && Math.abs(q.a * q.a - q.b * q.b * q.D) === Math.pow(gcd(q.a, q.b), 2)) {
+        var ff = Expression.ONE;
+        if (q.a % q.D === 0) {
+          q = {
+            a: q.b,
+            b: Math.floor(q.a / q.D),
+            D: q.D
+          };
+          ff = new SquareRoot(new Integer(q.D));
+          x = x.divide(ff);
+        }
+        var n = q.a * q.a - q.b * q.b * q.D;
+        if (q.a > 0 && q.b > 0 || q.a > 0 && n > 0 || q.b > 0 && n < 0) {
+          var t = new QuadraticInteger(q.a, q.b, q.D);
+          if (t.primeFactor().equals(t)) {
+            return (new SquareRoot(x.multiply(ff)));
+          }
+          var k1 = new QuadraticInteger(1, 0, q.D);
+          var k2 = new QuadraticInteger(1, 0, q.D);
+          var i = t;
+          var p = null;
+          while (!i.equals(Expression.ONE)) {
+            var d = i.primeFactor();
+            if (p == null) {
+              p = d;
+            } else {
+              if (p.equals(d)) {
+                k1 = k1.multiply(d);
+                p = null;
+              } else {
+                k2 = k2.multiply(p);
+                p = d;
+              }
+            }
+            i = i.truncatingDivide(d);
+          }
+          if (p != null) {
+            k2 = k2.multiply(p);
+          }
+          return k1.toExpression().multiply(new Expression.SquareRoot(k2.toExpression().multiply(ff)));
+        }
+      }
+    }
+*/
+
+
+/*
+
++    var y = evaluateExpression(e.a, context);
++    if (y === "CANNOT_DIVIDE" || y == null) {
++      return y;
++    }
++    //TODO: debug
++    var yy = new Interval(context.nthRoot(y.a, n).a, context.nthRoot(y.b, n).b);
++    var s = context.nthRoot(context.scalingCoefficient, n);
++    yy = context.divide(yy, context.multiply(Interval.degenerate(context.scalingCoefficient), s));
++    return yy;
+*/
+
+
+
+
+
+
+
+/*
+
+
+
+// +1, -1, +i, -i
+// a+bi
+
+// a === 0, i*(a+bi)
+// a < 0, -(a+bi)
+// b < 0, i*(a+bi)
+
+// a > 0, b > 0
+
+
+/*
+  for (var a = 1; a * a <= n; a += 1) {
+    for (var b = 0; b * b <= n - a * a; b += 1) {
+      if (norm(a, b) > 1 && hasDivisor(r, i, a, b)) {
+        return [a, b];
+      }
+      if (norm(a, -b) > 1 && hasDivisor(r, i, a, -b)) {
+        return [a, -b];
+      }
+    }
+  }
+  return [r, i];
+*/
+
+/*
+
+function primeFactor(n) {
+  var i = 2;
+  var s = 0;
+  var r = Math.floor(Math.sqrt(n + 0.5));
+  while (i <= r) {
+    if (n % i === 0) {
+      return i;
+    }
+    i += s === 2 ? 2 : s + 1;
+    s += 1;
+    if (s === 4) {
+      s = 2;
+    }
+  }
+  return n;
+}
+
+function isPrime(n) {
+  return primeFactor(n) === n;
+}
+
+function norm(x) {
+  return x instanceof Expression.Integer ? x.multiply(x).value : x.multiply(x.conjugate()).value;
+}
+
+function checkFactorization(i) {
+  var results = [];
+  var x = i;
+  while (norm(x) > 1) {
+    var p = x.primeFactor();
+    results.push(p);
+
+    //A Gaussian integer a + bi is a Gaussian prime if and only if either:
+    //  one of a, b is zero and absolute value of the other is a prime number of the form 4n + 3 (with n a nonnegative integer), or
+    //  both are nonzero and a**2 + b**2 is a prime number (which will not be of the form 4n + 3).
+    var n = norm(p);
+    console.assert(isPrime(n) || ((p instanceof Expression.Integer || p.real.equals(Expression.ZERO) || p.imaginary.equals(Expression.ZERO)) && Math.abs(p instanceof Expression.Integer ? p : p.real.add(p.imaginary).value) % 4 === 3), n, p.toString());
+
+    x = x.divide(p);
+    if (x instanceof Expression.Integer && norm(x) > 1) {
+      x = new Expression.Complex(Expression.ZERO, x);
+    }
+  }
+  console.log(i + '=' + results.map(x => '(' + x + ')').join(''));
+}
+
+
+// 5-5i
+
+checkFactorization(new Complex(new Expression.Integer(3), new Expression.Integer(3)));
+
+checkFactorization(new Complex(new Expression.Integer(0), new Expression.Integer(2)));
+checkFactorization(new Complex(new Expression.Integer(0), new Expression.Integer(-2)));
+checkFactorization(new Complex(new Expression.Integer(5), new Expression.Integer(1)));
+
+var A = 11;
+for (var i = -A; i <= A; i += 1) {
+  for (var j = -A; j <= A; j += 1) {
+    if (j !== 0) {
+      checkFactorization(new Complex(new Expression.Integer(i), new Expression.Integer(j)));
+    }
+  }
+}
+
+
+*/
+
+/*
+          if (i == null && isOnePlusSqrtOf2(y.a)) {
+            i = y.a;
+          }
+          if (i == null) {
+            throw new TypeError();
+          }
+          } else if (isOnePlusSqrtOf2(y.a)) {
+            if (!p.equals(y.a)) {
+              throw new TypeError();
+            }
+            degree += 1;
+
+*/
+
+
+// http://oeis.org/wiki/Quadratic_integer_rings
+// https://oeis.org/A048981
+// https://en.wikipedia.org/wiki/Euclidean_domain#Norm-Euclidean_fields
+// https://en.wikipedia.org/wiki/Fundamental_unit_(number_theory)
+// https://en.wikipedia.org/wiki/Pell%27s_equation
+// https://en.wikipedia.org/wiki/Diophantine_equation
+// https://ru.wikipedia.org/wiki/Гауссовы_целые_числа#Определение
+// https://en.wikipedia.org/wiki/Gaussian_integer
+// https://en.wikipedia.org/wiki/Prime_element
+
+
+globalThis.QuadraticInteger = QuadraticInteger;
+
+
+
+// ExpressionParser.parse('((17^0.5+7)**3)**(1/3)') + ''
+
+
+//TODO: 
+/*
+
+*/
+
+function AlmostQuadraticInteger(k, qi) { // k * qi
+  if (k.isNegative() || k.equals(Expression.ONE) || k.equals(Expression.ZERO) || !(k instanceof Expression.Integer || k instanceof Expression.SquareRoot)) {
+    throw new TypeError();
+  }
+  if (qi.a == 0) {
+  //  throw new TypeError();
+  }
+  if (qi.b == 0) {
+    throw new TypeError();
+  }
+  if (ngcd(qi.a, qi.b) != 1 && ngcd(qi.a, qi.b) != -1) {
+    throw new TypeError();
+  }
+  this.k = k;
+  this.qi = qi;
+}
+
+//AlmostQuadraticInteger.prototype = Object.create(null);
+
+AlmostQuadraticInteger.prototype.toString = function () {
+  return '(' + this.k + ')' + '*' + '(' + this.qi + ')';
+};
+
+AlmostQuadraticInteger.prototype.isValid = function () {
+  return this.qi.isValid();
+};
+
+AlmostQuadraticInteger.prototype.isPositive = function () {
+  return this.qi.isPositive();
+};
+
+AlmostQuadraticInteger.prototype.equals = function (y) {
+  return this.qi.toExpression().multiply(this.k).equals(y.toExpression());
+};
+AlmostQuadraticInteger.prototype.primeFactor = function () {
+  return this.k.toBigInt() !== this.qi.D ? this.k.primeFactor() : new QuadraticInteger(this.qi.D.constructor(0), this.qi.D.constructor(1), this.qi.D);
+};
+AlmostQuadraticInteger.prototype.isUnit = function () {
+  return false;//!
+};
+AlmostQuadraticInteger.prototype.isDivisibleBy = function (y) {
+  var g = y.toExpression().pow(Expression.TWO).gcd(this.k.pow(Expression.TWO)).squareRoot();
+  var nk = this.k.divide(g);
+  if (g instanceof Expression.SquareRoot && g.a.toBigInt() != y.D) {
+    return this.qi.multiply(new QuadraticInteger(this.k.toBigInt(), y.D.constructor(0), this.qi.D)).isDivisibleBy(y);//?TODO: fix
+  }
+  return this.qi.isDivisibleBy(y.truncatingDivide(g instanceof Expression.SquareRoot ? new QuadraticInteger(this.qi.D.constructor(0), this.qi.D.constructor(1), g.a.toBigInt()) : g));
+};
+AlmostQuadraticInteger.prototype.truncatingDivide = function (y) {
+  //TODO: Fix
+  var g = y.toExpression().pow(Expression.TWO).gcd(this.k.pow(Expression.TWO)).squareRoot();
+  var nk = this.k.divide(g);
+  if (g instanceof Expression.SquareRoot && g.a.toBigInt() != y.D) {
+    return this.qi.multiply(new QuadraticInteger(this.k.toBigInt(), y.D.constructor(0), this.qi.D)).truncatingDivide(y);//?TODO: fix
+  }
+  var nq = this.qi.truncatingDivide(y.truncatingDivide(g instanceof Expression.SquareRoot ? new QuadraticInteger(this.qi.D.constructor(0), this.qi.D.constructor(1), g.a.toBigInt()) : g));
+  if (nq.b == 0) {
+    // || nq.a == 0 - 2*sqrt(2)
+    return nk.multiply(nq.toExpression());
+  }
+  if (nq.a == 0) {
+    return nq.multiply(new QuadraticInteger(nk.toBigInt(), 0, nq.D));//?
+  }
+  return nk.equals(Expression.ONE) ? nq : new AlmostQuadraticInteger(nk, nq);
+};
+AlmostQuadraticInteger.prototype.remainder = function (y) {
+  var g = y.toExpression().gcd(this.k);
+  //TODO: ?
+  var remainder = this.qi.remainder(y.truncatingDivide(g));
+  if (remainder.equals(Expression.ZERO)) {
+    return remainder;
+  }
+  if (remainder instanceof AlmostQuadraticInteger) {
+    return new AlmostQuadraticInteger(this.k.multiply(remainder.k), remainder.qi);
+  }
+  var t = Expression.Integer.fromBigInt(abs(ngcd(remainder.a, remainder.b)));
+  var nk = this.k.multiply(t);
+  remainder = remainder.truncatingDivide(t);
+  if (remainder.b == 0) {
+    return nk.divide(g);
+  }
+  return this.k.equals(g) ? remainder : new AlmostQuadraticInteger(nk.divide(g), remainder);
+};
+AlmostQuadraticInteger.prototype.toExpression = function (y) {
+  return this.qi.toExpression().multiply(this.k);
+};
+
+AlmostQuadraticInteger.prototype.isDivisibleByInteger = function (x) {
+  return x.truncatingDivide(this) != null;
+};
+
+AlmostQuadraticInteger.prototype.truncatingDivideInteger = function (x) {
+  return new QuadraticInteger(x.toBigInt(), Expression.ZERO.toBigInt(), this.qi.D).truncatingDivide(this);
+};
+
+AlmostQuadraticInteger.prototype.remainderInteger = function (x) {
+  return new QuadraticInteger(x.toBigInt(), Expression.ZERO.toBigInt(), this.qi.D).remainder(this);
+};
+
+
+// new QuadraticInteger(7, 1, 17).remainder(new QuadraticInteger(3, 1, 17))
+
+
+})();
+(function () {
+"use strict";
+/*jslint plusplus: true, vars: true, indent: 2, white: true */
+/*global i18n*/
+
+
+
+
+
+
+
+
+var RPN = ExpressionParser.parse;//TODO: fix
+RPN.Context = ExpressionParser.Context;
+
+var polynomialToExpression3 = function (matrix, row, variableSymbols) {
+  var pivotColumn = 0;
+  while (pivotColumn < matrix.cols() - 1 && matrix.e(row, pivotColumn).equals(Expression.ZERO)) {
+    pivotColumn += 1;
+  }
+  if (pivotColumn === matrix.cols() - 1) {
+    throw new TypeError();
+  }
+  var result = undefined;
+  for (var i = pivotColumn; i < matrix.cols() - 1; i += 1) {
+    var c = i === pivotColumn ? matrix.e(row, matrix.cols() - 1) : matrix.e(row, i).negate();
+    var v = i === pivotColumn ? undefined : variableSymbols[i];
+    if (!c.equals(Expression.ZERO)) {
+      var current = v == undefined ? c : (c.equals(Expression.ONE) ? v : new Expression.Multiplication(c, v));
+      result = result == undefined ? current : new Expression.Addition(result, current);
+    }
+  }
+  return result == undefined ? Expression.ZERO : result;
+};
+
+RPN.toMathML = function (input, printOptions) {
+  return ExpressionParser.parse(input, new ExpressionParser.Context()).toMathML(printOptions);
 };
 
 //Note: matrixTableState.inputValues were filled by `getInputValue`
@@ -11768,9 +15582,13 @@ RPN.getElementsArray = function (matrixTableState) {
     //?
     //!!!
     if (type === "system") {// to support custom input in SLE: 3x+y-2z=2; 2x+y-1=3; ...
-      var tmp = getAugmentedSystemMatrix(textareaValue);
-      if (tmp != undefined) {
-        return tmp;
+      try {
+        var tmp = getAugmentedSystemMatrix(textareaValue);
+        if (tmp != undefined) {
+          return tmp;
+        }
+      } catch (error) {
+        console.log(error);
       }
     }
     //!!!
@@ -11778,7 +15596,7 @@ RPN.getElementsArray = function (matrixTableState) {
     var resultRows = Matrix.split(textareaValue);
     return {elements: resultRows, variableNames: undefined};
   }
-  return {elements: inputValues, variableNames: undefined};
+  return {elements: inputValues, variableNames: matrixTableState.variableNames};
 };
 
 var getSymbols = function (e) {
@@ -11789,12 +15607,14 @@ var getSymbols = function (e) {
     return [];
   }
   if (e instanceof Expression.BinaryOperation) {
-    return getSymbols(e.a).concat(getSymbols(e.b));
+    var sa = getSymbols(e.a);
+    var sb = getSymbols(e.b);
+    return sa != null && sb != null ? sa.concat(sb) : null;
   }
   if (e instanceof Expression.Function) {
     return getSymbols(e.a);
   }
-  throw new Error();
+  return null;
 };
 
 var getAugmentedSystemMatrix = function (s) {
@@ -11804,7 +15624,6 @@ var getAugmentedSystemMatrix = function (s) {
 
       var lines = s.split("\n");
       var k = -1;
-      var ok = true;
       var rows = [];
       var frees = [];
       var variableToColumnNumberMap = {};// string -> number
@@ -11831,45 +15650,46 @@ var getAugmentedSystemMatrix = function (s) {
 
       var cvLists = new Array(lines.length);
 
-      while (ok && ++k < lines.length) {
+      RPN.p = 0;//!
+      while (++k < lines.length) {
         cvLists[k] = undefined;
-        var line = lines[k].replace(/^\s+|\s+$/g, "");
-        if (line.indexOf("=") !== -1 && line.split("=").length === 2) {
-          var x = line.split("=");
-          try {
-            var y = ExpressionParser.parse(x[0]).subtract(ExpressionParser.parse(x[1])).getNumerator();
-            cvLists[k] = Expression.collectLinearEquationVariables(y);
-          } catch (error) {
-            ok = false;
-            console.log(error);
-          }
+        var line = lines[k];
+        var x = line.split("=");
+        if (x.length === 2) {
+          //TODO: fix
+          var leftString = x[0];
+          var rightString = x[1];
+          var left = ExpressionParser.parse(leftString);
+          RPN.p += leftString.length;
+          RPN.p += "=".length;
+          var right = ExpressionParser.parse(rightString);
+          RPN.p += rightString.length;
+          RPN.p += "\n".length;
+          var y = left.subtract(right).getNumerator();
+          cvLists[k] = Expression.collectLinearEquationVariables(y);
         } else {
-          if (line !== "") { // to skip empty lines
-            ok = false;
+          RPN.p += line.length + "\n".length;
+          if (line.replace(/^\s+|\s+$/g, "") !== "") { // to skip empty lines
+            return undefined;
           }
         }
       }
-      
+
       // second pass:
       var nonVariableSymbols = {};
-      for (var i = 0; i < cvLists.length && ok; i += 1) {
+      for (var i = 0; i < cvLists.length; i += 1) {
         if (cvLists[i] != undefined) {
           var list = cvLists[i];
-          for (var j = 0; j < list.length && ok; j += 1) {
-            try {
-              var symbols = getSymbols(list[j].c);
-              for (var k = 0; k < symbols.length; k += 1) {
-                nonVariableSymbols[symbols[k]] = true;
-              }
-            } catch (error) {//TODO: remove - ?
-              ok = false;
-              console.log(error);
+          for (var j = 0; j < list.length; j += 1) {
+            var symbols = getSymbols(list[j].c);
+            if (symbols == null) {
+              return undefined;
+            }
+            for (var k = 0; k < symbols.length; k += 1) {
+              nonVariableSymbols[symbols[k]] = true;
             }
           }
         }
-      }
-      if (!ok) {
-        return undefined;
       }
 
       for (var i = 0; i < cvLists.length; i += 1) {
@@ -11946,37 +15766,36 @@ Matrix.toMatrix = function (array) {
 // ---------------------------------------i18n.js-----------------------------------------
 
 // i18n.rankDenotation
-ExpressionParser.addDenotations("rank", {
-  bg: "ранг",
-  de: "rang",
-  en: "rank",
-  es: "rango",
-  fr: "rg",
-  gl: "rango",
-  it: "rango",
-  pt: "posto",
-  tr: "rank"
-});
-
 // i18n.sinDenotation
-ExpressionParser.addDenotations("sin", {
-  en: "sin",
-  es: "sen"
-});
-
 // i18n.tanDenotation
-ExpressionParser.addDenotations("tan", {
-  en: "tan",
-  ru: "tg",
-  fr: "tg"
-});
-
-ExpressionParser.addDenotations("transpose", {
-  es: "traspuesta"
-});
-
-ExpressionParser.addDenotations("determinant", {
-  pt: "determinante"
+// TODO: denotations on the main page in information
+ExpressionParser.addDenotations({
+  rank: {
+    bg: "ранг",
+    de: "rang",
+    en: "rank",
+    es: "rango",
+    fr: "rg",
+    gl: "rango",
+    it: "rango",
+    pt: "posto",
+    tr: "rank"
+  },
+  sin: {
+    en: "sin",
+    es: "sen"
+  },
+  tan: {
+    en: "tan",
+    ru: "tg",
+    fr: "tg"
+  },
+  transpose: {
+    es: "traspuesta"
+  },
+  determinant: {
+    pt: "determinante"
+  }
 });
 
 // --------------------------------------------- end ----------------------------------------------
@@ -12037,10 +15856,9 @@ var createDetailsSummary = function (idPrefix, details, bestMethodsLimit) {
     //TODO: what if some `type` was provided?
     var type = details[j].type;
     var items = [];
-    for (var i = 0; i < Expression.Details.details.length; i += 1) {
-      var x = Expression.Details.details[i];
-      if (x.type.indexOf(type) === 0 && rows >= x.minRows && rows <= x.maxRows) {
-        if (true) {
+    var edetails = Expression.Details.getAll(type, rows);
+    for (var i = 0; i < edetails.length; i += 1) {
+      var x = edetails[i];
           var jsonObject = [{
             type: x.type,
             matrix: details[j].matrix,
@@ -12049,14 +15867,12 @@ var createDetailsSummary = function (idPrefix, details, bestMethodsLimit) {
           //TODO: Tree View - ?
           var item = "" +
                "<div class=\"details-container\">" +
-               "<details data-id-prefix=\"" + idPrefix + "\" " + "data-details=\"" + Utils.escapeHTML(JSON.stringify(jsonObject)) + "\"" + ">" +
+               "<details data-id-prefix=\"" + idPrefix + "\" " + "data-details=\"" + Expression.escapeHTML(JSON.stringify(jsonObject)) + "\"" + ">" +
                "<summary>" + i18n.summaryLabel + (x.i18n != undefined ? " (" + x.i18n() + ")" : "") + "</summary>" +
                "<div class=\"indented\"></div>" +
                "</details>" + 
                "</div>";
           items.push(item);
-        }
-      }
     }
     var groupId = idPrefix + "-" + Expression.id();
     if (items.length > bestMethodsLimit + 1) {
@@ -12091,10 +15907,15 @@ Expression.Minor.prototype.toMathML = function (options) {
 };
 
 Expression.p = function (s, args, printOptions) {
+  if (args == null && printOptions != null ||
+      args != null && printOptions == null) {
+    throw new TypeError();
+  }
+  args = args || null;
+  printOptions = printOptions || null;
   var result = "";
   var parts = s.split("=");
   for (var i = 0; i < parts.length; i += 1) {
-    args = args == undefined ? undefined : args;
     var e = ExpressionParser.parse(parts[i], new ExpressionParser.Context(function (id) {
       return args != undefined && args[id] != undefined ? args[id] : undefined;
     }));
@@ -12125,7 +15946,7 @@ Expression.Details.add = function (data) {
     type: data.type,
     i18n: data.i18n,
     minRows: data.minRows == undefined ? 3 : data.minRows,
-    maxRows: data.maxRows == undefined ? 1 / 0 : data.maxRows,
+    maxRows: Math.min(data.maxRows == undefined ? 1 / 0 : data.maxRows, 4), // limit maxRows to reduce "de tricherie aux examens"
     priority: data.priority == undefined ? 1 : data.priority, // the number comparision should work 
     callback: data.callback
   };
@@ -12139,14 +15960,29 @@ Expression.Details.add = function (data) {
 
   //?
   if (x.type !== "multiply" && x.type !== "pow" && x.type !== "special-determinant") {
-    ExpressionParser.addOperation(x.type, x.type === "expand-along-column" || x.type === "expand-along-row" || x.type === "obtain-zeros-in-column" || x.type === "obtain-zeros-in-row" || x.type === "polynomial-multiply" || x.type === "multiply" || x.type === "pow" ? 2 : 1);
+    ExpressionParser.addOperation(x.type, x.type === "expand-along-column" ||
+                                          x.type === "expand-along-row" ||
+                                          x.type === "obtain-zeros-in-column" ||
+                                          x.type === "obtain-zeros-in-row" ||
+                                          x.type === "polynomial-multiply" ||
+                                          x.type === "multiply" ||
+                                          x.type === "pow" ? 2 : 1);
   }
 };
 
-
+Expression.Details.getAll = function (typePrefix, rows) {
+  var result = [];
+  for (var i = 0; i < Expression.Details.details.length; i += 1) {
+    var x = Expression.Details.details[i];
+    if (x.type.indexOf(typePrefix) === 0 && rows >= x.minRows && rows <= x.maxRows) {
+      result.push(x);
+    }
+  }
+  return result;
+};
 
 Expression.Details.add({
-  type: "diagonalize",
+  type: "steps-to-diagonalize",
   minRows: 2,
   callback: function (printOptions, matrix) {
     // TODO: move to details
@@ -12166,8 +16002,7 @@ Expression.Details.add({
       //TODO: fix message
       html += "</ol>";//TODO: fix
       //TODO: fix
-      var detailsHTML = "<div class=\"details-container\"><details open=\"open\"><summary>" + i18n.summaryLabel + "</summary><div class=\"indented\">" + html + "</div></details></div>";
-      return "<div>" + i18n.notEnoughRationalEigenvalues + "</div>" + detailsHTML;
+      return html;
     }
     var tmp2 = Expression.getEigenvectorsWithSteps(printOptions, matrix, eigenvalues);
     html += "<li>";
@@ -12178,12 +16013,9 @@ Expression.Details.add({
 
     if (eigenvectors.length !== matrix.cols()) {
       //TODO: show polynomial in html anyway
-      // The matrix is not diagonalizable, because it does not have {n} linearly independent eigenvectors.
-      var message = i18n.notDiagonalizable.replace(/\$\{n\}/g, matrix.cols());
       html += "</ol>";//TODO: fix
       //TODO: fix
-      var detailsHTML = "<div class=\"details-container\"><details open=\"open\"><summary>" + i18n.summaryLabel + "</summary><div class=\"indented\">" + html + "</div></details></div>";
-      return "<div>" + message + "</div>" + detailsHTML;
+      return html;
     }
 
     var results = Expression.diagonalize(matrix, eigenvalues, multiplicities, eigenvectors);
@@ -12201,7 +16033,7 @@ Expression.Details.add({
       var multiplicity = multiplicities[i];
       for (var j = 0; j < multiplicity; j += 1) {
         eigenvaluesLinks += i === 0 && j === 0 ? "" : ", ";
-        eigenvaluesLinks += "<a href=\"#" + printOptions.idPrefix + "-eigenvalue-" + (i + 1) + "\"><math>" + Expression.p("\u03BB_" + (i + 1), undefined, printOptions) + "</math></a>";
+        eigenvaluesLinks += "<a href=\"#" + printOptions.idPrefix + "-eigenvalue-" + (i + 1) + "\"><math>" + Expression.p("\\lambda_" + (i + 1)) + "</math></a>";
       }
     }
     html += "<div>" + i18n.theDiagonalMatrixTheDiagonalEntriesAreTheEigenvalues.replace(/\$\{eigenvaluesLinks\}/g, eigenvaluesLinks) + "</div>";
@@ -12212,7 +16044,7 @@ Expression.Details.add({
     var eigenvectorsLinks = "";
     for (var i = 0; i < eigenvectors.length; i += 1) {
       eigenvectorsLinks += i === 0 ? "" : ", ";
-      eigenvectorsLinks += "<a href=\"#" + printOptions.idPrefix + "-eigenvector-" + (i + 1) + "\"><math>" + Expression.p("v_" + (i + 1), undefined, printOptions) + "</math></a>";
+      eigenvectorsLinks += "<a href=\"#" + printOptions.idPrefix + "-eigenvector-" + (i + 1) + "\"><math>" + Expression.p("v_" + (i + 1)) + "</math></a>";
     }
     html += "<div>" + i18n.theMatrixWithTheEigenvectorsAsItsColumns.replace(/\$\{eigenvectorsLinks\}/g, eigenvectorsLinks) + "</div>";
     html += "<math>" + Expression.p("P=M", {M: new Expression.Matrix(T)}, printOptions) + "</math>";
@@ -12224,7 +16056,7 @@ Expression.Details.add({
     html += "</li>";
 
     html += "<li>";
-    html += "<math>" + Expression.p("A=P*D*P^-1", undefined, printOptions) + "</math>";
+    html += "<math>" + Expression.p("A=P*D*P^-1") + "</math>";
     html += " ";
     html += i18n.matrixDiagonalizationLink;
     html += "</li>";
@@ -12233,12 +16065,48 @@ Expression.Details.add({
     html += "</li>";
 
     html += "</ol>";
+    return html;
+  }
+});
 
+Expression.Details.add({
+  type: "diagonalize",
+  minRows: 2,
+  callback: function (printOptions, matrix) {
+    var tmp = Expression.getEigenvalues(matrix);
+    var eigenvalues = tmp.eigenvalues;
+    var multiplicities = tmp.multiplicities;
     //TODO: fix
-    var detailsHTML = "<div class=\"details-container\"><details open=\"open\"><summary>" + i18n.summaryLabel + "</summary><div class=\"indented\">" + html + "</div></details></div>";
-    var resultHTML = "<math>" + new Expression.Matrix(matrix).toMathML(printOptions) + "<mo>" + (results.L.isExact() ? "=" : "&asymp;") + "</mo>" + new Expression.Matrix(results.T).toMathML(printOptions) + "<mo>&times;</mo>" + new Expression.Matrix(results.L).toMathML(printOptions) + "<mo>&times;</mo>" + new Expression.Matrix(results.T_INVERSED).toMathML(printOptions) + "</math>" + detailsHTML;
+    var detailsHTML = createDetailsSummary(printOptions.idPrefix, [{type: 'steps-to-diagonalize', matrix: matrix.toString(), second: undefined}]);
+    if (Expression.sum(multiplicities) !== matrix.cols()) {
+      return "<div>" + i18n.notEnoughRationalEigenvalues + "</div>" + detailsHTML;
+    }
+    var tmp = Expression.getEigenvectors(matrix, eigenvalues);
+    var eigenvectors = tmp.eigenvectors;
+    if (eigenvectors.length !== matrix.cols()) {
+      // The matrix is not diagonalizable, because it does not have {n} linearly independent eigenvectors.
+      var message = i18n.notDiagonalizable.replace(/\$\{n\}/g, matrix.cols());
+      //!2019-04-18
+      message += " " + "<small>" + i18n.tryToFindJordanNormalForm.replace(/\*([^\*]+)\*/g, '<a href="#Jordan-decomposition(' + matrix.toString() + ')">$1</a>') + "</small>";
+      //!
+      return "<div>" + message + "</div>" + detailsHTML;
+    }
+    var results = Expression.diagonalize(matrix, eigenvalues, multiplicities, eigenvectors);
+
+    //var detailsHTML = "<div class=\"details-container\"><details open=\"open\"><summary>" + i18n.summaryLabel + "</summary><div class=\"indented\">" + html + "</div></details></div>";
+    var resultHTML = "<math>" +
+                     new Expression.Matrix(matrix).toMathML(printOptions) +
+                     "<mo>" + (results.L.isExact() ? "=" : "&asymp;") + "</mo>" +
+                     "<mrow>" +
+                     new Expression.Matrix(results.T).toMathML(printOptions) +
+                     "<mo>&times;</mo>" +
+                     new Expression.Matrix(results.L).toMathML(printOptions) +
+                     "<mo>&times;</mo>" +
+                     new Expression.Matrix(results.T_INVERSED).toMathML(printOptions) +
+                     "</mrow>" +
+                     "</math>";
     //result = results.T;
-    return resultHTML;
+    return resultHTML + detailsHTML;
   }
 });
 
@@ -12247,6 +16115,7 @@ Expression.Details.add({
   type: "Jordan-decomposition",
   minRows: 2,
   callback: function (printOptions, matrix) {
+  
     var tmp = Expression.getEigenvaluesWithSteps(printOptions, matrix);
     var eigenvalues = tmp.eigenvalues;
     var multiplicities = tmp.multiplicities;
@@ -12259,48 +16128,273 @@ Expression.Details.add({
       var detailsHTML = "<div class=\"details-container\"><details open=\"open\"><summary>" + i18n.summaryLabel + "</summary><div class=\"indented\">" + html + "</div></details></div>";
       return "<div>" + i18n.notEnoughRationalEigenvalues + "</div>" + detailsHTML;
     }
-    var results = Expression.getFormaDeJordan(matrix, eigenvalues, multiplicities);
+    //var results = Expression.getFormaDeJordan(matrix, eigenvalues, multiplicities);
     //TODO: solution steps
-    var html = tmp.html;
-    html += "<div>...</div>";
+
+    //TODO: merge with `Expression.getFormaDeJordan`
+    //TODO: i18n
+    //TODO: hide <details>, compute on demand
+    //TODO: better details (links to vectors, subdetails for solution of systems)
+    function getSolutionSet(matrix) {
+      var fullMatrix = matrix.augment(Matrix.Zero(matrix.cols(), 1));
+      var result = fullMatrix.toRowEchelon(Matrix.GaussMontante, "solving", undefined);
+      var tmp = Matrix.solveByGaussNext(result.matrix);
+      var currentEigenvectors = Matrix.getSolutionSet(tmp).basisVectors;
+      return currentEigenvectors;//?
+    }
+    function matrixFromBlocks(blocks) {
+      var start = 0;
+      var J = Matrix.Zero(n, n);
+      for (var i = 0; i < blocks.length; i += 1) {
+        var b = blocks[i];
+        J = J.map(function (e, i, j) {
+          if (i >= start && i < start + b.size) {
+            return i === j ? b.eigenvalue : (i !== start + b.size - 1 && j === i + 1 ? Expression.ONE : Expression.ZERO);
+          }
+          return e;
+        });
+        start += b.size;
+      }
+      return J;
+    }
+    function matrixFromBasis(basis) {
+      if (basis.length === 0) {
+        throw new Error();
+      }
+      return Matrix.Zero(basis.length, basis[0].rows()).map(function (e, i, j) {
+        return basis[i].e(j, 0);
+      });
+    }
+    function isSolution(coefficientMatrix, vector) {
+      var f = coefficientMatrix.multiply(vector);
+      if (f.cols() !== 1) {
+        throw new RangeError("assertion failed");
+      }
+      for (var i = 0; i < f.rows(); i += 1) {
+        if (!f.e(i, 0).equals(Expression.ZERO)) {
+          return false;
+        }
+      }
+      return true;
+    }
+    function isLinearlyIndependentSet(basis, vectors) {
+      // https://math.stackexchange.com/questions/412563/determine-if-vectors-are-linearly-independent
+      return matrixFromBasis(basis.concat(vectors)).rank() === basis.length + vectors.length;
+    }
+
+    var containerId = printOptions.idPrefix + "-" + Expression.id();
+    var links = [];
+
+    var basis = [];
+    var blocks = [];
+    var A = matrix;
+    var n = A.cols();
+    var po = printOptions;
+    var html = '';
+
+    html += '<h3>' + i18n.findAMatrixInJordanNormalFormSimilarToOriginal + ' ' + i18n.JordanDecompositionLink + '</h3>';
+    html += '<ol>';
+    html += '<li>';
+    html += '<h4>' + i18n.solveTheCharacteristicEquationForEigenvaluesAndTheirAlgebraicMultiplicities + '</h4>';
+    html += tmp.html;
+    html += '</li>';
+    html += '<li>';
+    html += '<h4>' + i18n.findLinearlyIndependentGeneralizedEigenvectorsForEveryEigenvalue + '</h4>';
+    html += '<ol>';
+    for (var i = 0; i < eigenvalues.length; i += 1) {
+      html += '<li>';
+      var basisCorrespondingToTheEigenvalue = [];
+      var eigenvalue = eigenvalues[i];
+      var algebraicMultiplicity = multiplicities[i];
+      var B = A.subtract(Matrix.I(n).scale(eigenvalue));
+      html += '<h5>';
+      html += i18n.eigenvalue + ' ' + '<math>' + Expression.p('\\lambda_' + (i + 1) + '=v', {v: eigenvalue}, printOptions) + '</math>' + ', ' + i18n.algebraicMultiplicity + ' ' + '<math>' + Expression.p('\\mu_' + (i + 1) + '=' + algebraicMultiplicity) + '</math>';
+      html += '</h5>';
+      
+      html += '<p>' + i18n.determineTheMaximalRankOfGeneralizedEigenvectors + '</p>';
+      var m = 0;
+      html += '<ul>';
+      do {
+        m += 1;
+        html += '<li>';
+        var rank = B.pow(m).rank();
+        html += '<math>' + Expression.p('rank(A-l*I)**' + m + '=' + rank, {A: new Expression.Matrix(matrix), l: eigenvalue}, printOptions) + '</math>';
+        html += '</li>';
+      } while (B.pow(m).rank() > n - algebraicMultiplicity);
+      html += '</ul>';
+      m += 1;
+      html += '<p>' + i18n.determineEachJordanChain + '</p>';
+      html += '<ol>';
+      while (--m >= 1) {
+        html += '<li>';
+        html += i18n.findSolutionsOfX.replace(/\$\{X\}/g, '<math>' + Expression.p('(A-l*I)**' + m + '*X=0', {A: new Expression.Matrix(matrix), l: eigenvalue}, printOptions) + '</math>');
+        var solutionSet = getSolutionSet(B.pow(m));
+
+        html += '<div>';
+        html += i18n.aBasisForTheSolutionSet + ' ';
+        html += '<math>';
+        html += '<mrow>';
+        html += '<mo stretchy="false">{</mo>';
+        html += solutionSet.length !== 1 ? '<mrow>' : '';
+        for (var j = 0; j < solutionSet.length; j += 1) {
+          var solution = solutionSet[j];
+          if (j !== 0) {
+            html += '<mo>,</mo>';
+          }
+          html += new Expression.Matrix(solution).toMathML(printOptions);
+        }
+        html += solutionSet.length !== 1 ? '</mrow>' : '';
+        html += '<mo stretchy="false">}</mo>';
+        html += '</mrow>';
+        html += '</math>';
+        html += '</div>';
+
+        html += '<ol>';
+        for (var j = 0; j < solutionSet.length; j += 1) {
+          var solution = solutionSet[j];
+          html += '<li>';
+          html += '<h6>';
+          html += '<math>' + Expression.p('x_' + (j + 1) + '=v', {v: new Expression.Matrix(solution)}, printOptions) + '</math>';
+          html += '</h6>';
+          if (!isSolution(B.pow(m - 1), solution)) {
+            html += '<p>' + '<math>' + Expression.p('(A-l*I)**(' + m + '-1)*X', {A: new Expression.Matrix(matrix), l: eigenvalue}, printOptions) + '<mo>&ne;</mo><mn>0</mn>' + '</math>' + ' &rarr; ' + i18n.itIsAGeneralizedEigenvector + '</p>';
+            var chain = [];
+            chain.push(solution);
+            html += '<p>' + i18n.generateAJordanChainForThisGeneralizedEigenvector + '</p>';
+            var chainHtml = '';
+            chainHtml += '<ol>';
+            chainHtml += '<li>';
+            chainHtml += '<math>' + Expression.p('v_1=S', {S: new Expression.Matrix(solution)}, printOptions) + '</math>';
+            chainHtml += '</li>';
+            var s = solution;
+            for (var k = 1; k < m; k += 1) {
+              var previous = s;
+              s = B.multiply(s);
+              chain.push(s);
+              chainHtml += '<li>';
+              chainHtml += '<math>' + Expression.p('v_' + (k + 1) + '=(A-l*I)*S=X', {A: new Expression.Matrix(matrix), l: eigenvalue, S: new Expression.Matrix(previous), X: new Expression.Matrix(s)}, printOptions) + '</math>';
+              chainHtml += '</li>';
+            }
+            chainHtml += '</ol>';
+            chain.reverse();
+            if (isLinearlyIndependentSet(basisCorrespondingToTheEigenvalue, chain)) {
+              var id = containerId + '-' + (blocks.length + 1);
+              html += '<table role="presentation" class="anchor-table anchor" id="' + id + '">';
+              html += '<tr>';
+              html += '<td>';
+              html += chainHtml;
+              html += '</td>';
+              html += '<td>';
+              html += '(' + (blocks.length + 1) + ')';
+              html += '</td>';
+              html += '</tr>';
+              html += '</table>';
+              links.push('<a href="#' + id + '">(' + (blocks.length + 1) + ')</a>');
+              basis = basis.concat(chain);
+              basisCorrespondingToTheEigenvalue = basisCorrespondingToTheEigenvalue.concat(chain);
+              blocks.push({
+                size: m,
+                eigenvalue: eigenvalue
+              });
+            } else {
+              html += chainHtml;
+            }
+          } else {
+            html += '<p>' + '<math>' + Expression.p('(A-l*I)**(' + m + '-1)*X=0', {A: new Expression.Matrix(matrix), l: eigenvalue}, printOptions) + '</math>' + ' &rarr; ' + i18n.itIsNotAGeneralizedEigenvector + '</p>';
+          }
+          html += '</li>';
+        }
+        html += '</ol>';
+        html += '</li>';
+      }
+      html += '</ol>';
+      
+      html += '<p>' + i18n.theJordanChainsMakeBasis.replace(/\$\{links\}/g, links.slice(-basisCorrespondingToTheEigenvalue.length).join(', ')) + '</p>';
+      html += '</li>';
+    }
+    html += '</ol>';
+    html += '</li>';
+    html += '<li>';
+    var J = matrixFromBlocks(blocks);
+    var P = matrixFromBasis(basis).transpose();
+    var P_INVERSED = P.isExact() ? P.inverse() : Expression._getInverse(A, eigenvalues, multiplicities, P);
+
+    html += '<p>' + i18n.generalizedModalMatrix.replace(/\$\{links\}/g, links.join(', ')) + '</p>';
+    html += '<math>' + Expression.p('M=S', {S: new Expression.Matrix(P)}, printOptions) + '</math>';
+    html += '<p>' + i18n.JordanMatrix + '</p>';
+    html += '<math>' + Expression.p('J=S', {S: new Expression.Matrix(J)}, printOptions) + '</math>';
+    html += '</li>';
+    html += '</ol>';
+
+    //TODO: solution steps
+    //var html = tmp.html;
+    //html += "<div>...</div>";
+    //html += "<div>" + i18n.JordanDecompositionLink + "</div>";
     var detailsHTML = "<div class=\"details-container\"><details open=\"open\"><summary>" + i18n.summaryLabel + "</summary><div class=\"indented\">" + html + "</div></details></div>";
-    return "<math>" + new Expression.Matrix(matrix).toMathML(printOptions) + "<mo>" + (results.J.isExact() ? "=" : "&asymp;") + "</mo>" + new Expression.Matrix(results.P).toMathML(printOptions) + "<mo>&times;</mo>" + new Expression.Matrix(results.J).toMathML(printOptions) + "<mo>&times;</mo>" + new Expression.Matrix(results.P_INVERSED).toMathML(printOptions) + "</math>" + detailsHTML;
+    return "<math>" +
+           new Expression.Matrix(matrix).toMathML(printOptions) +
+           "<mo>" + (J.isExact() ? "=" : "&asymp;") + "</mo>" +
+           "<mrow>" +
+           new Expression.Matrix(P).toMathML(printOptions) +
+           "<mo>&times;</mo>" +
+           new Expression.Matrix(J).toMathML(printOptions) +
+           "<mo>&times;</mo>" +
+           new Expression.Matrix(P_INVERSED).toMathML(printOptions) +
+           "</mrow>" +
+           "</math>" +
+           detailsHTML;
   }
 });
 //!
 
-function powUsingTransformations(N) {
-  return "<math>" + Expression.p("A^n=(P*" + N + "*P^-1)^n", {}, {}) + "<mo>=</mo>" +
-           "<munder>" +
-             "<mrow>" +
+function powUsingTransformationsHelper(x) {
+  return   "<munder>" +
              "<munder accentunder=\"true\">" +
              "<mrow>" +
              "<mi>P</mi>" +
              "<mo>&times;</mo>" +
-             "<mi>" + N + "</mi>" +
+             x +
              "<mo>&times;</mo>" +
-             "<menclose notation=\"updiagonalstrike\"><msup><mrow><mi>P</mi></mrow><mrow><mo>&minus;</mo><mn>1</mn></mrow></msup></menclose>" + 
+             "<menclose notation=\"updiagonalstrike\"><msup><mi>P</mi><mrow><mo>&minus;</mo><mn>1</mn></mrow></msup></menclose>" + 
              "<mo>&times;</mo>" +
              "<menclose notation=\"updiagonalstrike\"><mi>P</mi></menclose>" + 
              "<mo>&times;</mo>" + 
-             "<mi>" + N + "</mi>" +
+             x +
              "<mo>&times;</mo>" +
-             "<menclose notation=\"updiagonalstrike\"><msup><mrow><mi>P</mi></mrow><mrow><mo>&minus;</mo><mn>1</mn></mrow></msup></menclose>" +
-             "<mo>&times;</mo><mtext>...</mtext><mo>&times;</mo>" +
+             "<menclose notation=\"updiagonalstrike\"><msup><mi>P</mi><mrow><mo>&minus;</mo><mn>1</mn></mrow></msup></menclose>" +
+             "<mo>&times;</mo><mi>&hellip;</mi><mo>&times;</mo>" +
              "<menclose notation=\"updiagonalstrike\"><mi>P</mi></menclose>" +
              "<mo>&times;</mo>" +
-             "<mi>" + N + "</mi>" +
+             x +
              "<mo>&times;</mo>" +
-             "<msup><mrow><mi>P</mi></mrow><mrow><mo>&minus;</mo><mn>1</mn></mrow></msup>" +
+             "<msup><mi>P</mi><mrow><mo>&minus;</mo><mn>1</mn></mrow></msup>" +
              "</mrow>" +
-             "<mrow><mo stretchy=\"true\">&UnderBrace;</mo></mrow>" +
+             "<mo stretchy=\"true\">&UnderBrace;</mo>" +
              "</munder>" +
-             "</mrow>" +
-             "<mrow><mi>n</mi></mrow>" +
-           "</munder>" +
-           "<mo>=</mo>" +
-           Expression.p("P*" + N + "^n*P^-1", {}, {}) + "</math>";
+             "<mi>n</mi>" +
+           "</munder>";
 }
+
+function powUsingTransformations(N) {
+  return "<math>" +
+         Expression.p("A^n=(P*" + N + "*P^-1)^n") +
+         "<mo>=</mo>" +
+         powUsingTransformationsHelper(Expression.p(N)) +
+         "<mo>=</mo>" +
+         Expression.p("P*" + N + "^n*P^-1") +
+         "</math>";
+}
+
+function nthRootUsingTransformations(N) {
+  return "<math>" +
+         powUsingTransformationsHelper(Expression.p(N + "**(1/n)")) +
+         "<mo>=</mo>" +
+         Expression.p("P*" + N + "*P^-1") +
+         "<mo>=</mo>" +
+         Expression.p("A") +
+         "</math>";
+}
+
 
 Expression.Details.add({
   type: "pow-using-diagonalization",
@@ -12317,6 +16411,139 @@ Expression.Details.add({
   }
 });
 
+Expression.Details.add({
+  type: "nth-root-using-diagonalization",
+  minRows: 2,
+  callback: function (printOptions, matrix) {
+    return nthRootUsingTransformations("D") + " " + i18n.nthRootUsingDiagonalizationLink;
+  }
+});
+
+
+Expression.Details.add({
+  type: "exponential-using-Jordan-canonical-form",
+  minRows: 2,
+  callback: function (printOptions, matrix) {
+    //TODO: when the matrix is already diagonal, when the matrix is a [projection matrix](https://en.wikipedia.org/wiki/Matrix_exponential#Projection_case)
+//  Expression.Details.getCallback("exponential-using-Jordan-canonical-form")({}, RPN("{{0,1,0},{0,1,0},{0,0,0}}").matrix);
+
+    var A = matrix;
+    var tmp = Expression.getEigenvalues(A);
+    var eigenvalues = tmp.eigenvalues;
+    var multiplicities = tmp.multiplicities;
+    var tmp = Expression.getFormaDeJordan(A, eigenvalues, multiplicities);
+    var D = tmp.J.map(function (e, i, j) {
+      return i === j ? e : Expression.ZERO;
+    });
+    var N = tmp.J.map(function (e, i, j) {
+      return i !== j ? e : Expression.ZERO;
+    });
+    var expN = new Expression.Matrix(N).exp().matrix;//TODO: ?
+    var expJmN = D.map(function (e, i, j) {
+      return i === j ? e.exp() : Expression.ZERO;
+    });
+    var expA = tmp.P.multiply(expJmN).multiply(expN).multiply(tmp.P_INVERSED);
+
+    var data = {
+      A: A,
+      P: tmp.P,
+      J: tmp.J,
+      P_INVERSED: tmp.P_INVERSED,
+      N: N,
+      JmN: D,
+      expN: expN,
+      expJmN: expJmN,
+      expA: expA
+    };
+    for (var i in data) {
+      if (Object.prototype.hasOwnProperty.call(data, i)) {
+        data[i] = new Expression.Matrix(data[i]);
+      }
+    }
+
+    var html = '';
+    html += '<h3>' + i18n.exponentialUsingJordanCanonicalFormLink + '</h3>';
+    html += '<math>' + Expression.p('exp(A)=exp(P*J*P^-1)=P*exp(J-N)*exp(N)*P^-1') + '</math>';
+    // data.P
+    // data.J
+    // data.P_INVERSED
+    // data.N
+    // data.JmN
+    // data.expN
+    // data.expJmN
+    // data.expA
+
+    // 1. Find a matrix in Jordan normal form:
+    //   ...
+    //   A = P*J*P**(-1) = X*Y*Z
+    // 2. Then:
+    //   N = M, J-N = M
+    // 3. Find the exponential of the Nilpotent matrix (N):
+    //   e**N=I+N+1/2*N**2+1/6*N**3+...+1(q-1)!*N**(q-1) (*)[https://en.wikipedia.org/wiki/Matrix_exponential#Nilpotent_case]:
+    // ...
+    // 4. Find the exponential of the diagonal matrix (J-N):
+    //   Exponential can be obtained by exponentiating each entry on the main diagonal (*)[https://en.wikipedia.org/wiki/Matrix_exponential#Diagonalizable_case]:
+    //   exp(J-N)=M
+    // 5. Then:
+    //   exp(A)=X*Y=Z
+    
+    html += '<ol>';
+
+    html += '<li>';
+    html += '<h3>' + i18n.exponential.findAMatrixInJordanNormalForm + '</h3>';
+    html += createDetailsSummary(printOptions.idPrefix, [{type: "Jordan-decomposition", matrix: matrix.toString(), second: undefined}]);
+    html += '<div>';
+    html += '<math>' + Expression.p('A=P*J*P**(-1)') + '</math>' + ':';
+    html += '</div>';
+    html += '<div>';
+    html += '<math>' + Expression.p('A=P*J*V', {A: data.A, P: data.P, J: data.J, V: data.P_INVERSED}, printOptions) + '</math>';
+    html += '</div>';
+    html += '</li>';
+
+    html += '<li>';
+    html += '<h3>' + i18n.exponential.then + '</h3>';
+    html += '<div>';
+    html += '<math>' + Expression.p('N=M', {M: data.N}, printOptions) + '</math>';
+    html += ', ';
+    html += '<math>' + Expression.p('J-N=M', {M: data.JmN}, printOptions) + '</math>';
+    html += '</div>';
+    html += '</li>';
+
+    html += '<li>';
+    html += '<h3>' + i18n.exponential.findTheExponentialOfTheNilpotentMatrixN.replace(/\$\{N\}/g, '<math><mi>N</mi></math>') + '</h3>';
+    html += '<div>';
+    // \u22EF == &hellip;
+    html += '<math>' + Expression.p('e**N=I+N+1/2*N**2+1/6*N**3+a+1/f*N**k').replace(/<mi>a<\/mi>/g, '<mi>&hellip;</mi>').replace(/<mi>f<\/mi>/g, '<mrow><mi>k</mi><mo>!</mo></mrow>') + '</math>' + ' ' + i18n.exponential.exponentialOfNilpotentMatrixLink + ':';
+    html += '</div>';
+    //TODO: steps
+    html += '<div>';
+    html += '<math>' + Expression.p('e**N=M', {M: data.expN}, printOptions) + '</math>';
+    html += '</div>';
+    html += '</li>';
+
+    html += '<li>';
+    html += '<h3>' + i18n.exponential.findTheExponentialOfTheDiagonalMatrixD.replace(/\$\{D\}/g, '<math><mi>J</mi>&minus;<mi>N</mi></math>') + '</h3>';
+    html += '<div>';
+    html += i18n.exponential.exponentialOfDiagonalMatrix;
+    html += '</div>';
+    html += '<div>';
+    html += '<math>' + Expression.p('e**(J-N)=M', {M: data.expJmN}, printOptions) + '</math>';
+    html += '</div>';
+    html += '</li>';
+
+    html += '<li>';
+    html += '<h3>' + i18n.exponential.then + '</h3>';
+    html += '<div>';
+    html += '<math>' + Expression.p('exp(A)=P*X*Y*V=M', {A: data.A, P: data.P, X: data.expJmN, Y: data.expN, V: data.P_INVERSED, M: data.expA}, printOptions) + '</math>';
+    html += '</div>';
+    html += '</li>';
+
+    html += '</ol>';
+
+    //TODO:...
+    return html;
+  }
+});
 
 var getAdjugateByDefinition = function (printOptions, matrix) {
     var result = "";
@@ -12326,10 +16553,13 @@ var getAdjugateByDefinition = function (printOptions, matrix) {
       for (var j = 0; j < matrix.cols(); j += 1) {
         result += "<div>";// TODO: <ul> - ?
         result += "<math>";
-        result += "<msub><mrow><mi>C</mi></mrow><mrow><mn>${i}</mn><mn>${j}</mn></mrow></msub><mo>=</mo>".replace(/\$\{j\}/g, (j + 1).toString()).replace(/\$\{i\}/g, (i + 1).toString());
-        result += Expression.p("(-1)^(i+j)", {i: Expression.Integer.parseInteger((i + 1).toString()), j: Expression.Integer.parseInteger((j + 1).toString())}, printOptions);
+        result += Expression.p('C_(' + (i + 1) + ',' + (j + 1) + ')');
+        result += '<mo>=</mo>';
+        result += '<mrow>';
+        result += Expression.p("(-1)^(i+j)", {i: Expression.Integer.fromNumber(i + 1), j: Expression.Integer.fromNumber(j + 1)}, printOptions);
         result += "<mo>&times;</mo>";
         result += new Expression.Minor(new Expression.Matrix(matrix), i, j).toMathML(printOptions);
+        result += '</mrow>';
         var minorMatrix = matrix.minorMatrix(i, j);
         var minor = minorMatrix.determinant();
         var isOdd = (i + j) - 2 * Math.floor((i + j) / 2);
@@ -12337,7 +16567,7 @@ var getAdjugateByDefinition = function (printOptions, matrix) {
         var c = n.multiply(minor);
 
         if (minorMatrix.rows() === 2) {//!
-          result += "<munder><mrow><mo>=</mo></mrow><mrow><mtext data-x=\"TODO\">" + i18n.determinant2x2Link + "</mtext></mrow></munder>";
+          result += "<munder><mo>=</mo><mtext>" + i18n.determinant2x2Link + "</mtext></munder>";
           result += Expression.p("n*(a*d-b*c)", {
             n: n,
             a: minorMatrix.e(0, 0),
@@ -12399,7 +16629,7 @@ Expression.Details.add({
     result += "<div>";
     result += "<math>";
     result += Expression.p("A^-1=1/determinant(A)*C^T=1/determinant(A)*X", {X: new Expression.Matrix(matrix.map(function (e, i, j) {
-      return new Expression.Symbol("C_" + (j + 1).toString() + (i + 1).toString());
+      return new Expression.Symbol('C_(' + (j + 1) + ',' + (i + 1) + ')');
     }))}, printOptions);
     result += "</math>";
     result += " ";
@@ -12505,12 +16735,13 @@ Matrix.prototype.getDeterminantEventType = function (base) {
     col: -1
   };
 };
-  
+
 //!new
 Expression.Details.add({
   type: "special-determinant",
   i18n: undefined,
   priority: 0,
+  minRows: 1,//TODO: add a test
   callback: function (printOptions, matrix) {
     var html = "";
     
@@ -12541,7 +16772,7 @@ Expression.Details.add({
   i18n: function () {
     return i18n.matrixMultiplication;
   },
-  minRows: 2,
+  minRows: 1,
   maxRows: undefined,
   priority: 1,
   callback: function (printOptions, matrixA, matrixB) {
@@ -12554,6 +16785,7 @@ Expression.Details.add({
     var matrixAB = matrixAn.multiply(matrixBn);
     var resultOfMultiplication = matrixAB.map(function (e, i, j) {return e.simplify();});
     html += "<math>";
+    html += "<mrow>";
     html += new Expression.Matrix(matrixAn).toMathML(Object.assign({}, printOptions, {
       cellIdGenerator: function (i, j) {
         return matrixAn.e(i, j).getId();
@@ -12565,6 +16797,7 @@ Expression.Details.add({
         return matrixBn.e(i, j).getId();
       }
     }));
+    html += "</mrow>";
     html += "<mo>=</mo>";
     html += new Expression.Matrix(matrixAB).toMathML(Object.assign({}, printOptions, {
       cellIdGenerator: function (i, j) {
@@ -12602,7 +16835,7 @@ Expression.Details.add({
     var html = "<ul>";
     html += "<li>";
     html += "<math>";
-    html += Expression.p("A", undefined, printOptions) + "<mo>=</mo>" + new Expression.Matrix(t[i]).toMathML(printOptions);
+    html += Expression.p("A") + "<mo>=</mo>" + new Expression.Matrix(t[i]).toMathML(printOptions);
     html += "</math>";
     html += "</li>";
     while (c * 2 <= n) {
@@ -12610,7 +16843,7 @@ Expression.Details.add({
       t.push(t[i].multiply(t[i]));
       html += "<li>";
       html += "<math>";
-      html += Expression.p("A^" + c.toString(), undefined, printOptions) + "<mo>=</mo>" + Expression.p("A^" + Math.floor(c / 2).toString() + "*" + "A^" + Math.floor(c / 2).toString(), undefined, printOptions) + "<mo>=</mo>" + new Expression.Matrix(t[i + 1]).toMathML(printOptions);
+      html += Expression.p("A^" + c) + "<mo>=</mo>" + Expression.p("A^" + Math.floor(c / 2) + "*" + "A^" + Math.floor(c / 2)) + "<mo>=</mo>" + new Expression.Matrix(t[i + 1]).toMathML(printOptions);
       html += "</math>";
       html += "</li>";
       i += 1;
@@ -12623,27 +16856,27 @@ Expression.Details.add({
       if (nn >= c) {
         nn -= c;
         result = result == undefined ? t[i] : result.multiply(t[i]);
-        var z = new Expression.NonSimplifiedExpression(new Expression.Symbol("A").pow(Expression.Integer.parseInteger(c.toString())));
+        var z = new Expression.NonSimplifiedExpression(new Expression.Symbol("A").pow(Expression.Integer.fromNumber(c)));
         r = r == undefined ? z : r.multiply(z);
       }
       c = Math.floor(c / 2);
       i -= 1;
     }
     html += "<math>";
-    html += Expression.p("A^" + n.toString(), undefined, printOptions) + "<mo>=</mo>" + r.toMathML(printOptions) + "<mo>=</mo>" + new Expression.Matrix(result).toMathML(printOptions);
+    html += Expression.p("A^" + n) + "<mo>=</mo>" + r.toMathML(printOptions) + "<mo>=</mo>" + new Expression.Matrix(result).toMathML(printOptions);
     html += "</math>";
     return html;
   }
 });
 
 Expression.someDetailsNew = {
-  "determinant2x2": "<span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,0],[1,1]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[0,1],[1,0]]\"><math><mfenced open=\"|\" close=\"|\"><mrow><mtable rowspacing=\"0ex\"><mtr><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>11</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>12</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>21</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>22</mn></mrow></msub></mtd></mtr></mtable></mrow></mfenced><mo>=</mo><mrow><mrow mathcolor=\"#D64040\"><msub><mrow><mi>a</mi></mrow><mrow><mn>11</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>22</mn></mrow></msub></mrow><mo>&minus;</mo><mrow mathcolor=\"#4040D6\"><msub><mrow><mi>a</mi></mrow><mrow><mn>12</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>21</mn></mrow></msub></mrow></mrow></math></span></span>${link}",
-  "determinant3x3": "<math><mfenced open=\"|\" close=\"|\"><mrow><mtable rowspacing=\"0ex\"><mtr><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>11</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>12</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>13</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>21</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>22</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>23</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>31</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>32</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>33</mn></mrow></msub></mtd></mtr></mtable></mrow></mfenced><mo>=</mo></math>",
-  "matrix3x3": "<math><mtable rowspacing=\"0ex\"><mtr><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>11</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>12</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>13</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>21</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>22</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>23</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>31</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>32</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>33</mn></mrow></msub></mtd></mtr></mtable></math>",
-  "determinantTriangle": "${determinant3x3}<table class=\"some-details-table\"><tr><td><math><mo>+</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>11</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>22</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>33</mn></mrow></msub></math></td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,0],[1,1],[2,2]]\">${matrix3x3}</span></td></tr><tr><td><math><mo>+</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>12</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>23</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>31</mn></mrow></msub></math></td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,1],[1,2],[2,0]]\">${matrix3x3}</span></span></td></tr><tr><td><math><mo>+</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>13</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>21</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>32</mn></mrow></msub></math></td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,1],[1,2],[2,0]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,2],[1,0],[2,1]]\">${matrix3x3}</span></span></span></td></tr><tr><td><math><mo>&minus;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>13</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>22</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>31</mn></mrow></msub></math></td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,1],[1,2],[2,0]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,2],[1,0],[2,1]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[2,0],[1,1],[0,2]]\">${matrix3x3}</span></span></span></span></td></tr><tr><td><math><mo>&minus;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>11</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>23</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>32</mn></mrow></msub></math></td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,1],[1,2],[2,0]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,2],[1,0],[2,1]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1\" data-cells=\"[[2,0],[1,1],[0,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[2,1],[1,2],[0,0]]\">${matrix3x3}</span></span></span></span></span></td></tr><tr><td><math><mo>&minus;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>12</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>21</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>33</mn></mrow></msub></math>${link}</td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,1],[1,2],[2,0]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,2],[1,0],[2,1]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1\" data-cells=\"[[2,0],[1,1],[0,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1\" data-cells=\"[[2,1],[1,2],[0,0]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[2,2],[1,0],[0,1]]\">${matrix3x3}</span></span></span></span></span></span></td></tr></table>",
-  "matrix5x3": "<math><mtable rowspacing=\"0ex\" columnlines=\"none none dashed none\"><mtr><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>11</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>12</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>13</mn></mrow></msub></mtd><mtd mathcolor=\"#808080\"><msub><mrow><mi>a</mi></mrow><mrow><mn>11</mn></mrow></msub></mtd><mtd mathcolor=\"#808080\"><msub><mrow><mi>a</mi></mrow><mrow><mn>12</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>21</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>22</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>23</mn></mrow></msub></mtd><mtd mathcolor=\"#808080\"><msub><mrow><mi>a</mi></mrow><mrow><mn>21</mn></mrow></msub></mtd><mtd mathcolor=\"#808080\"><msub><mrow><mi>a</mi></mrow><mrow><mn>22</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>31</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>32</mn></mrow></msub></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mn>33</mn></mrow></msub></mtd><mtd mathcolor=\"#808080\"><msub><mrow><mi>a</mi></mrow><mrow><mn>31</mn></mrow></msub></mtd><mtd mathcolor=\"#808080\"><msub><mrow><mi>a</mi></mrow><mrow><mn>32</mn></mrow></msub></mtd></mtr></mtable></math>",
-  "determinantSarrus": "${determinant3x3}<table class=\"some-details-table\"><tr><td><math><mo>+</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>11</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>22</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>33</mn></mrow></msub><mo>+</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>12</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>23</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>31</mn></mrow></msub><mo>+</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>13</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>21</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>32</mn></mrow></msub></math></td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,1],[1,2],[2,3]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,2],[1,3],[2,4]]\">${matrix5x3}</span></span></span></td></tr><tr><td><math><mo>&minus;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>13</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>22</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>31</mn></mrow></msub><mo>&minus;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>11</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>23</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>32</mn></mrow></msub><mo>&minus;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>12</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>21</mn></mrow></msub><mo>&times;</mo><msub><mrow><mi>a</mi></mrow><mrow><mn>33</mn></mrow></msub></math>${link}</td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,1],[1,2],[2,3]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,2],[1,3],[2,4]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[0,2],[1,1],[2,0]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[0,3],[1,2],[2,1]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[0,4],[1,3],[2,2]]\">${matrix5x3}</span></span></span></span></span></span></td></tr></table>",
-  "someDetails3": "<span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,0],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[0,2],[2,0]]\"><math><mtable rowspacing=\"0ex\"><mtr><mtd><mstyle mathvariant=\"bold\"><menclose notation=\"circle\"><msub><mrow><mi>a</mi></mrow><mrow><mi>r</mi><mo>,</mo><mi>c</mi></mrow></msub></menclose></mstyle></mtd><mtd><mtext>&hellip;</mtext></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mi>r</mi><mo>,</mo><mi>j</mi></mrow></msub></mtd></mtr><mtr><mtd><mtext>&#x22EE;</mtext></mtd><mtd><mrow></mrow></mtd><mtd><mtext>&#x22EE;</mtext></mtd></mtr><mtr><mtd><msub><mrow><mi>a</mi></mrow><mrow><mi>i</mi><mo>,</mo><mi>c</mi></mrow></msub></mtd><mtd><mtext>&hellip;</mtext></mtd><mtd><msub><mrow><mi>a</mi></mrow><mrow><mi>i</mi><mo>,</mo><mi>j</mi></mrow></msub></mtd></mtr></mtable></math></span></span>",
+  "determinant2x2": "<span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,0],[1,1]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[0,1],[1,0]]\"><math><mrow><mo>|</mo><mtable rowspacing=\"0ex\"><mtr><mtd><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd></mtr></mtable><mo>|</mo></mrow><mo>=</mo><mrow><mrow mathcolor=\"#D64040\"><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>1</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mrow><mo>&minus;</mo><mrow mathcolor=\"#4040D6\"><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>2</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mrow></mrow></math></span></span>${link}",
+  "determinant3x3": "<math><mrow><mo>|</mo><mtable rowspacing=\"0ex\"><mtr><mtd><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mtd></mtr></mtable><mo>|</mo></mrow></math><math><mo>=</mo></math>",
+  "matrix3x3": "<math><mtable rowspacing=\"0ex\"><mtr><mtd><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mtd></mtr></mtable></math>",
+  "determinantTriangle": "${determinant3x3}<table class=\"some-details-table\"><tr><td><math><mrow><mo>+</mo><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mrow><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>2</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></math></td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,0],[1,1],[2,2]]\">${matrix3x3}</span></td></tr><tr><td><math><mrow><mo>+</mo><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mrow><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>3</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></math></td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,1],[1,2],[2,0]]\">${matrix3x3}</span></span></td></tr><tr><td><math><mrow><mo>+</mo><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mrow><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>1</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></math></td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,1],[1,2],[2,0]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,2],[1,0],[2,1]]\">${matrix3x3}</span></span></span></td></tr><tr><td><math><mrow><mo>&minus;</mo><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mrow><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>2</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></math></td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,1],[1,2],[2,0]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,2],[1,0],[2,1]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[2,0],[1,1],[0,2]]\">${matrix3x3}</span></span></span></span></td></tr><tr><td><math><mrow><mo>&minus;</mo><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mrow><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>3</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></math></td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,1],[1,2],[2,0]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,2],[1,0],[2,1]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1\" data-cells=\"[[2,0],[1,1],[0,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[2,1],[1,2],[0,0]]\">${matrix3x3}</span></span></span></span></span></td></tr><tr><td><math><mrow><mo>&minus;</mo><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mrow><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>1</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></math>${link}</td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,1],[1,2],[2,0]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,2],[1,0],[2,1]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1\" data-cells=\"[[2,0],[1,1],[0,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1\" data-cells=\"[[2,1],[1,2],[0,0]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[2,2],[1,0],[0,1]]\">${matrix3x3}</span></span></span></span></span></span></td></tr></table>",
+  "matrix5x3": "<math><mtable rowspacing=\"0ex\" columnlines=\"none none dashed none\"><mtr><mtd><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mtd><mtd mathcolor=\"#808080\"><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd mathcolor=\"#808080\"><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mtd><mtd mathcolor=\"#808080\"><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd mathcolor=\"#808080\"><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd></mtr><mtr><mtd><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd><mtd><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mtd><mtd mathcolor=\"#808080\"><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mtd><mtd mathcolor=\"#808080\"><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mtd></mtr></mtable></math>",
+  "determinantSarrus": "${determinant3x3}<table class=\"some-details-table\"><tr><td><math><mrow><mrow><mo>+</mo><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mrow><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>2</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mrow><mo>+</mo><mrow><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>2</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>3</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mrow><mo>+</mo><mrow><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>3</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>1</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mrow></math></td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,1],[1,2],[2,3]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,2],[1,3],[2,4]]\">${matrix5x3}</span></span></span></td></tr><tr><td><math><mrow><mrow><mo>&minus;</mo><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mrow><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>2</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>1</mn></mrow></msub></mrow><mo>&minus;</mo><mrow><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>1</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>3</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>2</mn></mrow></msub></mrow><mo>&minus;</mo><mrow><msub><mi>a</mi><mrow><mn>1</mn><mo>&ic;</mo><mn>2</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>2</mn><mo>&ic;</mo><mn>1</mn></mrow></msub><mo>&times;</mo><msub><mi>a</mi><mrow><mn>3</mn><mo>&ic;</mo><mn>3</mn></mrow></msub></mrow></math>${link}</td><td><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,0],[1,1],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,1],[1,2],[2,3]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"0\" data-cells=\"[[0,2],[1,3],[2,4]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[0,2],[1,1],[2,0]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[0,3],[1,2],[2,1]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[0,4],[1,3],[2,2]]\">${matrix5x3}</span></span></span></span></span></span></td></tr></table>",
+  "someDetails3": "<span data-custom-paint=\"custom-menclose\" data-color=\"0a\" data-cells=\"[[0,0],[2,2]]\"><span data-custom-paint=\"custom-menclose\" data-color=\"1a\" data-cells=\"[[0,2],[2,0]]\"><math><mtable rowspacing=\"0ex\"><mtr><mtd><mstyle mathvariant=\"bold\"><menclose notation=\"circle\"><msub><mi>a</mi><mrow><mi>r</mi><mo>,</mo><mi>c</mi></mrow></msub></menclose></mstyle></mtd><mtd><mtext>&hellip;</mtext></mtd><mtd><msub><mi>a</mi><mrow><mi>r</mi><mo>,</mo><mi>j</mi></mrow></msub></mtd></mtr><mtr><mtd><mtext>&vellip;</mtext></mtd><mtd></mtd><mtd><mtext>&vellip;</mtext></mtd></mtr><mtr><mtd><msub><mi>a</mi><mrow><mi>i</mi><mo>,</mo><mi>c</mi></mrow></msub></mtd><mtd><mtext>&hellip;</mtext></mtd><mtd><msub><mi>a</mi><mrow><mi>i</mi><mo>,</mo><mi>j</mi></mrow></msub></mtd></mtr></mtable></math></span></span>",
   "": ""
 };
 
@@ -12666,7 +16899,7 @@ Expression.Details.add({
     html += i18n.inverse2x2;
     html += " ";
     html += "<math>";
-    html += Expression.p("A^-1={{a, b}, {c, d}}^-1=1/determinant(A)*{{C_11, C_21}, {C_12, C_22}}=1/(a*d-b*c)*{{d, -b}, {-c, a}}", undefined, printOptions);
+    html += Expression.p("A^-1={{a, b}, {c, d}}^-1=1/determinant(A)*{{C_11, C_21}, {C_12, C_22}}=1/(a*d-b*c)*{{d, -b}, {-c, a}}");
     html += "</math>";
     html += i18n.inverse2x2Link;
     html += "</div>";
@@ -12750,7 +16983,7 @@ Expression.expandDeterminant = function (matrix, byRow, number, printOptions) {
     if (!matrix.isSquare()) {
       throw new RangeError("NonSquareMatrixException");
     }
-    if (k >= matrix.rows() || k < 0 || k !== Math.floor(k)) { // m.isSquare() === true
+    if (k >= matrix.rows() || k < 0 || k !== Math.floor(k)) { // matrix.isSquare() === true
       throw new RangeError("IntegerInputError" + ":" + number);
     }
     //!
@@ -12862,6 +17095,7 @@ var determinant3x3 = function (printOptions, matrix, text) {
     var cellId = function (i, j) {
       return matrixId + "_" + i.toString() + "_" + j.toString();
     };
+    var higlights = "";
     var html = "";
     //html += "<div>" + text + "</div>";
     html += "<div class=\"math-block\">" + text + "</div>";
@@ -12872,6 +17106,7 @@ var determinant3x3 = function (printOptions, matrix, text) {
       }
     }));
     html += "<mo>=</mo>";
+    html += "<mrow>";
     // TODO: clickable highlight with initially selected group
     var z = [
       "a_11*a_22*a_33",
@@ -12896,22 +17131,17 @@ var determinant3x3 = function (printOptions, matrix, text) {
         var j = Number.parseInt(sj, 10) - 1;
         return "#" + cellId(i, j) + ", ";
       }).slice(0, -2);
-      html += "<munder>";
       html += "<mrow id=\"" + (matrixId + "_x" + i.toString()) + "\">";
       html += e.toMathML(Object.assign({}, printOptions, {isTopLevel: false}));
       html += "</mrow>";
-      html += "<mrow>";
-      html += "<mtext data-x=\"TODO\">";
-      html += "<a class=\"a-highlight\" data-for=\"" + (matrixId + "_x" + i.toString()) + "\" data-highlight=\"" + highlight + "\"></a>";
-      html += "</mtext>";
-      html += "</mrow>";
-      html += "</munder>";
+      higlights += "<a class=\"a-highlight\" data-for=\"" + (matrixId + "_x" + i.toString()) + "\" data-highlight=\"" + highlight + "\"></a>";
       determinant = i === 0 ? e : (i < 3 ? determinant.add(e) : determinant.subtract(e));
     }
-
+    html += "</mrow>";
     html += "<mo>=</mo>";
     html += determinant.simplify().toMathML(printOptions);
     html += "</math>";
+    html += '<div hidden>' + higlights + '</div>';
     return html;
 };
 
@@ -13001,7 +17231,8 @@ Matrix.prototype.determinantLeibniz = function () {
   Matrix.permutations(this.cols(), function (p, even) {
     var t = undefined;
     for (var i = 0; i < p.length; i += 1) {
-      t = t == undefined ? matrix.e(i, p[i]) : t.multiply(matrix.e(i, p[i]));
+      var e = matrix.e(i, p[i]);
+      t = t == undefined ? e : t.multiply(e);
     }
     determinant = determinant == undefined ? (even ? t : t.negate()) : (even ? determinant.add(t) : determinant.subtract(t));
   });
@@ -13018,18 +17249,59 @@ Expression.Details.add({
   maxRows: 6,//?
   priority: -1,
   callback: function (printOptions, matrix) {
+    var highlights = '';
     var html = "";
     html += "<math>";
+    if (true) {
+    var nsMatrix = matrix.map(function (e, i, j) {
+      return new NonSimplifiedExpression(e);
+    });
+    html += new Expression.Determinant(new Expression.Matrix(nsMatrix)).toMathML(Object.assign({}, printOptions, {
+      cellIdGenerator: function (i, j) {
+        return nsMatrix.e(i, j).getId();
+      }
+    }));
+    html += "<mo>=</mo>";
+    var e = nsMatrix.determinantLeibniz();
+    var elements = [];
+    for (var s = e; s != null; s = (s.unwrap() instanceof Expression.Addition || s.unwrap() instanceof Expression.Subtraction) && s.unwrap().a instanceof NonSimplifiedExpression ? s.unwrap().a : null) {
+      var x = (s.unwrap() instanceof Expression.Addition || s.unwrap() instanceof Expression.Subtraction) && s.unwrap().a instanceof NonSimplifiedExpression ? s.unwrap().b : s;
+      elements.push({e: x, sign: s.unwrap() instanceof Expression.Subtraction ? '&minus;' : '+'});
+    }
+    html += elements.length !== 1 ? '<mrow>' : '';
+    for (var i = elements.length - 1; i >= 0; i -= 1) {
+      var x = elements[i].e;
+      var sign = elements[i].sign;
+      if (i !== elements.length - 1 || sign !== '+') {
+        //TODO: some details about sign
+        html += '<mo lspace="0.62em" rspace="0.62em">' + sign + '</mo>';
+      }
+      html += "<mrow id=\"" + x.getId() + "\">";
+      html += x.toMathML(printOptions);
+      html += "</mrow>";
+      
+      var highlight = '<a class="a-highlight" data-for="' + x.getId().toString() + '" data-highlight="' + x.unwrap().getIds() + '"></a>';
+      highlights += highlight;
+    }
+    html += elements.length !== 1 ? '</mrow>' : '';
+    } else {
     html += new Expression.Determinant(new Expression.Matrix(matrix)).toMathML(printOptions);
+    //TODO: formula - ?
     //html += "<mo>=</mo>";
     //html += "";
     html += "<mo>=</mo>";
     html += matrix.map(function (e, i, j) {
       return new NonSimplifiedExpression(e);
     }).determinantLeibniz().toMathML(printOptions);
-    html += "<mo>=</mo>";
-    html += matrix.determinantLeibniz().toMathML(printOptions);
+    }
+    if (matrix.cols() > 1) {
+      html += "<mo>=</mo>";
+      html += matrix.determinantLeibniz().toMathML(printOptions);
+    }
     html += "</math>";
+    html += " ";
+    html += i18n.determinantLeibnizLink;
+    html += '<div hidden>' + highlights + '</div>';
     return html;
   }
 });
@@ -13054,20 +17326,21 @@ Expression.mgetZero = function (m, k) { // m == n ; in a column k -- find in k-c
 };
 
 //TODO: better details
-Expression.getZero = function (matrix, atRow, a, printOptions) {
-    var k = Number.parseInt(a, 10) - 1;
+Expression.getZero = function (matrix, atRow, number, printOptions) {
+    var k = Number.parseInt(number, 10) - 1;
     //!
     if (!matrix.isSquare()) {
       throw new RangeError("NonSquareMatrixException");
     }
     if (k >= matrix.rows() || k < 0 || k !== Math.floor(k)) { // matrix.isSquare() === true
-      throw new RangeError("IntegerInputError" + ":" + a);
+      throw new RangeError("IntegerInputError" + ":" + number);
     }
     //!
 
     var html = "";
     html += "<math>";
-    html += new Expression.Determinant(new Expression.Matrix(matrix)).toMathML(printOptions) + "<mo>=</mo>";
+    html += new Expression.Determinant(new Expression.Matrix(matrix)).toMathML(printOptions);
+    html += "<mo>=</mo>";
 
     var tmp = Expression.mgetZero(atRow ? matrix.transpose() : matrix, k);
     var dets = tmp.dets;
@@ -13078,15 +17351,21 @@ Expression.getZero = function (matrix, atRow, a, printOptions) {
       //TODO: arrow-with-label - ?
     }
 
-    html += "<mo>=</mo>";
+    if (dets.length > 0) {
+      html += "<mo>=</mo>";
+    }
     var result = null;
     if (c == null) {
       result = Expression.ZERO;
     } else {
       var t = (dets.length === 0 ? matrix : dets[dets.length - 1]).minorMatrix(c.i, c.j);
-      result = c.e.multiply(t.determinant());
-      html += new Expression.Multiplication(c.e, new Expression.Determinant(new Expression.Matrix(atRow ? t.transpose() : t))).toMathML(printOptions);
-      html += "<mo>=</mo>";
+      if (t.cols() === 0) {
+        result = c.e;
+      } else {
+        result = c.e.multiply(t.determinant());
+        html += new Expression.Multiplication(c.e, new Expression.Determinant(new Expression.Matrix(atRow ? t.transpose() : t))).toMathML(printOptions);
+        html += "<mo>=</mo>";
+      }
     }
     html += result.toMathML(printOptions);
     html += "</math>";
@@ -13119,15 +17398,10 @@ var testSLECompatibility = function (printOptions, fullMatrix) {
   var augmented = m.augment(b);
   
   var results = [];
-  var w = function (result) {
-    if (result.c1 == undefined && result.c2 == undefined) {
-      results.push(result);
-    } else {
-      w(result.a1());
-      w(result.a2());
-    }
-  };
-  w(augmented.toRowEchelonXXX(Matrix.GaussMontante, "", undefined, Condition.TRUE));
+  Matrix.toRowEchelonWithCallback(augmented, Matrix.GaussMontante, "", null, function (result) {
+    results.push(result);
+  });
+  
 if (results.length > 1) {
   st += "<ol>";
 }
@@ -13243,32 +17517,32 @@ var solveUsingCramersRule = function (printOptions, fullMatrix, variableNames) {
   }
 
   var d = new Array(m.cols());
-  var i = 0;
-  var detMatrixI = function (elem, row, col) {
-    return col === i ? b.e(row, 0) : elem;
-  };
-  
-  i = -1;
-  while (++i < m.cols()) {
-    mstr += "<div>";// TODO: <ul> - ?
-    var m1 = m.map(detMatrixI);
+
+  mstr += '<ul class="list-unstyled">';
+  for (var i = 0; i < m.cols(); i += 1) {
+    mstr += "<li>";
+    var m1 = m.map(function (e, row, col) {
+      return col === i ? b.e(row, 0) : e;
+    });
     d[i] = m1.determinant();
     mstr += "<math>";
-    mstr += "<msub><mrow><mi>&Delta;</mi></mrow><mrow><mn>" + (i + 1) + "</mn></mrow></msub><mo>=</mo>" + new Expression.Determinant(new Expression.Matrix(m1)).toMathML(printOptions) + "<mo>=</mo>" + d[i].toMathML(printOptions);
+    mstr += "<msub><mi>&Delta;</mi><mn>" + (i + 1) + "</mn></msub>" +
+            "<mo>=</mo>" + new Expression.Determinant(new Expression.Matrix(m1)).toMathML(printOptions) +
+            "<mo>=</mo>" + d[i].toMathML(printOptions);
     mstr += "</math>";
     mstr += "; ";
     mstr += createDetailsSummary(printOptions.idPrefix, [{type: m1.getDeterminantEventType("determinant").type, matrix: m1.toString(), second: undefined}]);
-    mstr += "</div>";
+    mstr += "</li>";
   }
-  mstr += "<ul>";
-  i = -1;
-  while (++i < m.cols()) {
+  mstr += '</ul>';
+  mstr += '<ul class="list-unstyled">';
+  for (var i = 0; i < m.cols(); i += 1) {
     mstr += "<li>";
     mstr += "<math>";
     mstr += new Expression.Symbol(variableNames[i]).toMathML(printOptions);
     var deltaI = new NonSimplifiedExpression(d[i]).divide(new NonSimplifiedExpression(D0));
     var deltaISimplified = deltaI.simplify();
-    mstr += "<mo>=</mo><msub><mrow><mi>&Delta;</mi></mrow><mrow><mn>" + (i + 1) + "</mn></mrow></msub><mo>/</mo><mi>&Delta;</mi>";
+    mstr += "<mo>=</mo>" + "<mrow><msub><mi>&Delta;</mi><mn>" + (i + 1) + "</mn></msub><mo>&#x2215;</mo><mi>&Delta;</mi></mrow>";
     mstr += "<mo>=</mo>" + deltaI.toMathML(printOptions);
     if (deltaI.toString() !== deltaISimplified.toString()) {//?
       mstr += "<mo>=</mo>" + deltaISimplified.toMathML(printOptions);
@@ -13279,26 +17553,29 @@ var solveUsingCramersRule = function (printOptions, fullMatrix, variableNames) {
   mstr += "</ul>";
 
   mstr += "<div>" + i18n.answer + "</div>";
-  i = -1;
-  while (++i < m.cols()) {
-    mstr += "<div>";// TODO: <ul> -?
+  mstr += '<ul class="list-unstyled">';
+  for (var i = 0; i < m.cols(); i += 1) {
+    mstr += "<li>";
     mstr += "<math>";
     mstr += new Expression.Symbol(variableNames[i]).toMathML(printOptions) + "<mo>=</mo>" + d[i].divide(D0).toMathML(printOptions);
     mstr += "</math>";
-    mstr += "</div>";
+    mstr += "</li>";
   }
+  mstr += '</ul>';
 
   //TODO: ? use cases ? t*x=t - ?
   var condition = Condition.TRUE.andNotZero(D0);
   if (!condition.isTrue()) {
     mstr += "<div>";
     mstr += "<math>";
-    mstr += "<mo>(</mo>";
+    mstr += "<mrow><mo>(</mo>";
     mstr += condition.toMathML(printOptions);
-    mstr += "<mo>)</mo>";
+    mstr += "<mo>)</mo></mrow>";
     mstr += "</math>";
     mstr += "</div>";
   }
+
+  //TODO: some text about solution when !condition.isFalse()
 
   return mstr;
 };
@@ -13331,7 +17608,7 @@ var solveUsingInverseMatrixMethod = function (printOptions, fullMatrix, variable
   mstr += "<h4>" + i18n.solutionByInverseMatrixMethod + "</h4>";
   mstr += "<div>";
   mstr += "<math>";
-  mstr += "<mi>A</mi><mo>&times;</mo><mi>X</mi><mo>=</mo><mi>B</mi>";
+  mstr += "<mrow><mi>A</mi><mo>&times;</mo><mi>X</mi></mrow><mo>=</mo><mi>B</mi>";
   mstr += "</math>";
   mstr += "</div>";
   mstr += "<div>";
@@ -13347,13 +17624,13 @@ var solveUsingInverseMatrixMethod = function (printOptions, fullMatrix, variable
   if (c != undefined) {
     mstr += "<div>";
     mstr += "<math>";
-    mstr += "<msup><mrow><mi>A</mi></mrow><mrow><mo>&minus;</mo><mn>1</mn></mrow></msup><mo>=</mo>" + new Expression.Matrix(c).toMathML(printOptions);
+    mstr += "<msup><mi>A</mi><mrow><mo>&minus;</mo><mn>1</mn></mrow></msup><mo>=</mo>" + new Expression.Matrix(c).toMathML(printOptions);
     mstr += "</math>";
     mstr += "</div>";
     mstr += createDetailsSummary(printOptions.idPrefix, [{type: m.getDeterminantEventType("inverse").type, matrix: m.toString(), second: undefined}]);
     mstr += "<div>";
     mstr += "<math>";
-    mstr += "<mi>X</mi><mo>=</mo><msup><mrow><mi>A</mi></mrow><mrow><mo>&minus;</mo><mn>1</mn></mrow></msup><mo>&times;</mo><mi>B</mi><mo>=</mo>" + new Expression.Matrix(c).toMathML(printOptions) + "<mo>&times;</mo>" + new Expression.Matrix(b).toMathML(printOptions) + "<mo>=</mo>" + new Expression.Matrix(c.multiply(b)).toMathML(printOptions);
+    mstr += "<mi>X</mi><mo>=</mo><mrow><msup><mi>A</mi><mrow><mo>&minus;</mo><mn>1</mn></mrow></msup><mo>&times;</mo><mi>B</mi></mrow><mo>=</mo><mrow>" + new Expression.Matrix(c).toMathML(printOptions) + "<mo>&times;</mo>" + new Expression.Matrix(b).toMathML(printOptions) + "</mrow><mo>=</mo>" + new Expression.Matrix(c.multiply(b)).toMathML(printOptions);
     mstr += "</math>";
     mstr += "</div>";
   } else {
@@ -13367,11 +17644,6 @@ var solveUsingInverseMatrixMethod = function (printOptions, fullMatrix, variable
 //----------Gauss
 // getting row echelon form without columns swapping
 
-Expression.idCounter = 0;
-Expression.id = function () {
-  return (Expression.idCounter += 1).toString();
-};
-
 Expression.rowReduceChangeToHTML = function (change, printOptions, containerId, k, stepCondition) {
   var multiplier = change.type === "reduce" ? change.oldMatrix.e(change.targetRow, change.pivotColumn).divide(change.oldMatrix.e(change.pivotRow, change.pivotColumn)) : undefined;
   var areBracketsRequired = change.type === "reduce" ? multiplier.getPrecedence(multiplier) !== Expression.ZERO.getPrecedence() : undefined; //? not simple
@@ -13380,7 +17652,7 @@ Expression.rowReduceChangeToHTML = function (change, printOptions, containerId, 
   var tooltip = (change.type === "swap-negate" ? i18n.eliminationDetails.rowSwapNegate.replace(/\$\{\-1\}/g, "<math>" + "<mo>&minus;</mo><mn>1</mn>" + "</math>").replace(/\$\{j\}/g, jT).replace(/\$\{i\}/g, iT) : "") +
                 (change.type === "swap" ? i18n.eliminationDetails.rowSwap.replace(/\$\{j\}/g, jT).replace(/\$\{i\}/g, iT) : "") +
                 (change.type === "divide" ? i18n.eliminationDetails.rowDivision.replace(/\$\{a\}/g, "<code>" + "<math>" + change.oldMatrix.e(change.pivotRow, change.pivotColumn).toMathML(printOptions) + "</math>" + "</code>").replace(/\$\{j\}/g, jT).replace(/\$\{i\}/g, iT) : "") +
-                (change.type === "reduce" ? i18n.eliminationDetails.rowSubtraction.replace(/\$\{a\}/g, "<code>" + "<math>" + (areBracketsRequired ? "<mfenced open=\"(\" close=\")\">" + "<mrow>" : "") + multiplier.toMathML(printOptions) + (areBracketsRequired ? "</mrow>" + "</mfenced>" : "") + "</math>" + "</code>").replace(/\$\{j\}/g, jT).replace(/\$\{i\}/g, iT) : "");
+                (change.type === "reduce" ? i18n.eliminationDetails.rowSubtraction.replace(/\$\{a\}/g, "<code>" + "<math>" + (areBracketsRequired ? "<mrow><mo>(</mo>" : "") + multiplier.toMathML(printOptions) + (areBracketsRequired ? "<mo>)</mo></mrow>" : "") + "</math>" + "</code>").replace(/\$\{j\}/g, jT).replace(/\$\{i\}/g, iT) : "");
 
   var text = "";
   var cellId = function (containerId, k, i, j) {
@@ -13402,7 +17674,7 @@ Expression.rowReduceChangeToHTML = function (change, printOptions, containerId, 
       var tooltips = "<a class=\"a-tooltip\" data-for=\"" + cellId(containerId, k, change.targetRow, i) + "\" data-tooltip=\"" + divId + "\"></a>";
       text += "<div id=\"" + divId + "\">" +
               "<math>" +
-              Expression.p("a_" + (change.targetRow + 1).toString() + (i + 1).toString() + "=" + (change.type === "reduce" ? "(b-(c/a)*d)" : "(b*(1/a))") + "=r", {
+              Expression.p("a_(" + (change.targetRow + 1) + "," + (i + 1) + ")=" + (change.type === "reduce" ? "(b-(c/a)*d)" : "(b*(1/a))") + "=r", {
                 a: change.oldMatrix.e(change.pivotRow, change.pivotColumn),
                 b: change.oldMatrix.e(change.targetRow, i),
                 c: change.oldMatrix.e(change.targetRow, change.pivotColumn),
@@ -13445,7 +17717,7 @@ Expression.rowReduceChangeToHTML = function (change, printOptions, containerId, 
          (change.type !== "divide" ? "      <div class=\"arrow-line\"></div>" : "") +
          "    </div>" +
          "    <div class=\"label\">" +
-         (change.type === "swap" ? "" : (change.type === "swap-negate" ? "" : "<math>" + (change.type === "divide" ? "<mo>&times;</mo>" + "<mfenced open=\"(\" close=\")\"><mrow>" + Expression.ONE.divide(change.oldMatrix.e(change.targetRow, change.pivotColumn)).toMathML(printOptions) + "</mrow></mfenced>" : "<mo>&times;</mo>" + "<mfenced open=\"(\" close=\")\"><mrow>" + multiplier.negate().toMathML(printOptions) + "</mrow></mfenced>") + "</math>")) +
+         (change.type === "swap" ? "" : (change.type === "swap-negate" ? "" : "<math>" + (change.type === "divide" ? "<mo>&times;</mo>" + "<mrow><mo>(</mo>" + Expression.ONE.divide(change.oldMatrix.e(change.targetRow, change.pivotColumn)).toMathML(printOptions) + "<mo>)</mo></mrow>" : "<mo>&times;</mo>" + "<mrow><mo>(</mo>" + multiplier.negate().toMathML(printOptions) + "<mo>)</mo></mrow>") + "</math>")) +
          "    </div>" +
          "  </span>" +
          "</span>" +
@@ -13453,332 +17725,29 @@ Expression.rowReduceChangeToHTML = function (change, printOptions, containerId, 
          "<math>" +
          "<mpadded width=\"+0.8em\" lspace=\"+0.4em\">" +
          "<munder>" + 
-         "<mrow><mo stretchy=\"false\">~</mo></mrow>" +
-         "<mrow>" +
+         "<mo stretchy=\"false\">~</mo>" +
          (stepCondition.isTrue() ? "" : "<munder>") +
          "<mrow>" +
          ((change.type === "swap-negate" ? "${i}<mo>&harr;</mo><mrow><mo>&minus;</mo>${j}</mrow>" : "") +
           (change.type === "swap" ? "${i}<mo>&harr;</mo>${j}" : "") +
-          (change.type === "divide" ? "${j}<mo>/</mo><mfenced open=\"(\" close=\")\"><mrow>${a}</mrow></mfenced><mo>&rarr;</mo>${j}".replace(/\$\{a\}/g, change.oldMatrix.e(change.pivotRow, change.pivotColumn).toMathML(printOptions)) : "") +
-          (change.type === "reduce" ? "${j}<mo>&minus;</mo>${a}<mo>&times;</mo>${i}<mo>&rarr;</mo>${j}".replace(/\$\{a\}/g, (areBracketsRequired ? "<mfenced open=\"(\" close=\")\">" : "") + (printOptions.isLUDecomposition != undefined ? "<mrow mathbackground=\"#80FF80\">" : "") + "<mrow>" + multiplier.toMathML(printOptions) + "</mrow>" + (printOptions.isLUDecomposition != undefined ? "</mrow>" : "") + (areBracketsRequired ? "</mfenced>" : "")) : ""))
+          (change.type === "divide" ? "${j}<mo>&#x2215;</mo><mrow><mo>(</mo>${a}<mo>)</mo></mrow><mo>&rarr;</mo>${j}".replace(/\$\{a\}/g, change.oldMatrix.e(change.pivotRow, change.pivotColumn).toMathML(printOptions)) : "") +
+          (change.type === "reduce" ? "<mrow>${j}<mo>&minus;</mo><mrow>${a}<mo>&times;</mo>${i}</mrow></mrow><mo>&rarr;</mo>${j}".replace(/\$\{a\}/g, (areBracketsRequired ? "<mrow><mo>(</mo>" : "") + (printOptions.isLUDecomposition != undefined ? "<mrow mathbackground=\"#80FF80\">" : "") + multiplier.toMathML(printOptions) + (printOptions.isLUDecomposition != undefined ? "</mrow>" : "") + (areBracketsRequired ? "<mo>)</mo></mrow>" : "")) : ""))
             .replace(/\$\{j\}/g, getMatrixRowDenotation(change.targetRow + 1))
             .replace(/\$\{i\}/g, getMatrixRowDenotation(change.pivotRow + 1)) +
          "</mrow>" +
-         (stepCondition.isTrue() ? "" : "<mrow>") +
          (stepCondition.isTrue() ? "" : stepCondition.toMathML(printOptions)) +
-         (stepCondition.isTrue() ? "" : "</mrow>") +
          (stepCondition.isTrue() ? "" : "</munder>") +
-         "</mrow>" +
          "</munder>" +
          "</mpadded>" +
          "</math>" +
-         (tooltip !== "" ? "<a class=\"question-icon\" tabindex=\"0\" id=\"" + questionId + "\">?</a><a class=\"a-tooltip\" data-for=\"" + questionId + "\" data-tooltip=\"" + tooltipId + "\"></a><div hidden id=\"" + tooltipId + "\">" + tooltip + "</div>" : "") +
+         (tooltip !== "" ? "<a class=\"question-icon\" tabindex=\"0\" id=\"" + questionId + "\">?</a><a class=\"a-tooltip\" data-for=\"" + questionId + "\" data-tooltip=\"" + tooltipId + "\"></a><div id=\"" + tooltipId + "\" hidden>" + tooltip + "</div>" : "") +
          (text !== "" ? "<span hidden>" + text + "</span>" : "") +
          "</span>";
 };
 
-function Condition(array) {
-  this.array = array;
-}
 
-Expression.Condition = Condition;
-
-Condition.NEZ = " != 0";
-Condition.EQZ = " == 0";
-
-Condition.prototype._and = function (operator, e) {
-  if (operator !== Condition.NEZ && operator !== Condition.EQZ) {
-    throw new Error();
-  }
-  if (e == undefined) {
-    throw new RangeError();
-  }
-  if (this === Condition.FALSE) {
-    return this;
-  }
-  if (e instanceof Expression.GF2Value) {
-    return this._and(operator, e.value);//?
-  }
-  if (e instanceof Expression.NthRoot) {
-    return this._and(operator, e.a);
-  }
-  if (e instanceof Expression.Integer || e instanceof Expression.Complex) {
-    if (e.equals(Expression.ZERO)) {
-      if (operator === Condition.NEZ) {
-        return Condition.FALSE;
-      }
-      return this;
-    }
-    if (operator === Condition.EQZ) {
-      return Condition.FALSE;
-    }
-    return this;
-  }
-  if (operator === Condition.NEZ) {
-    if (e instanceof Expression.Multiplication) {
-      return this._and(Condition.NEZ, e.a)._and(Condition.NEZ, e.b);
-    }
-  }
-  if (e instanceof Expression.Division) {
-    return this._and(operator, e.a)._and(Condition.NEZ, e.b);
-  }
-  if (Expression.isConstant(e)) {
-    if (operator === Condition.NEZ) {
-      return this;
-    }
-    if (operator === Condition.EQZ) {
-      return Condition.FALSE;
-    }
-  }
-  var contains = function (array, operator, e) {
-    for (var i = 0; i < array.length; i += 1) {
-      if (array[i].operator === operator && array[i].expression.equals(e)) {
-        return true;
-      }
-    }
-    return false;
-  };
-  if (contains(this.array, operator, e)) {
-    return this;
-  }
-  if (contains(this.array, operator === Condition.EQZ ? Condition.NEZ : Condition.EQZ, e)) {
-    return Condition.FALSE;
-  }
-  if (e instanceof Expression.Exponentiation && e.b instanceof Expression.Integer && e.b.compareTo(Expression.ZERO) > 0 && e.a instanceof Expression.Symbol) {
-    return this._and(operator, e.a);
-  }
-  var add = function (oldArray, y) {
-    if (y.expression instanceof Expression.Division) {
-      var tmp = oldArray;
-      tmp = add(tmp, {expression: y.expression.a, operator: y.operator});
-      if (tmp == null) {
-        return null;
-      }
-      tmp = add(tmp, {expression: y.expression.b, operator: Condition.NEZ});
-      return tmp;
-    }
-    /*if (y.expression instanceof Expression.Division && Expression.isConstant(y.expression.b)) {
-      y = {
-        expression: y.expression.a,
-        operator: y.operator
-      };
-    }*/
-    if (y.expression instanceof Expression.Integer) {
-      if (y.operator === Condition.NEZ && y.expression.equals(Expression.ZERO) ||
-          y.operator === Condition.EQZ && !y.expression.equals(Expression.ZERO)) {
-        return null;
-      }
-      return oldArray;
-    }
-    if (y.expression instanceof Expression.Multiplication) {
-      if (y.operator === Condition.EQZ) {
-        if (y.expression.a instanceof Expression.Integer && !y.expression.a.equals(Expression.ZERO)) {
-          //TODO: fix - ?
-          y = {
-            expression: y.expression.b,
-            operator: y.operator
-          };
-        }
-      }
-      if (y.operator === Condition.NEZ) {
-        var tmp = oldArray;
-        tmp = add(tmp, {expression: y.expression.a, operator: Condition.NEZ});
-        if (tmp == null) {
-          return null;
-        }
-        tmp = add(tmp, {expression: y.expression.b, operator: Condition.NEZ});
-        return tmp;
-      }
-    }
-    var newArray = [];
-    for (var i = 0; i < oldArray.length; i += 1) {
-      var x = oldArray[i];
-      if (Expression.isSingleVariablePolynomial(x.expression.multiply(y.expression))) {
-        if (x.operator === Condition.NEZ && y.operator === Condition.EQZ ||
-            x.operator === Condition.EQZ && y.operator === Condition.NEZ) {
-          var g = x.expression.gcd(y.expression);
-          while (!g.equals(Expression.ONE) && !g.equals(Expression.ONE.negate())) {
-            if (x.operator === Condition.EQZ) {
-              x = {
-                operator: x.operator,
-                expression: x.expression.divide(g)
-              };
-            } else {
-              y = {
-                operator: y.operator,
-                expression: y.expression.divide(g)
-              };
-            }
-            g = x.expression.gcd(y.expression);
-          }
-          if (x.operator === Condition.EQZ) {
-            y = x;
-          }
-          if (Expression.isConstant(y.expression)) {
-            return null;
-          }
-        } else if (x.operator === Condition.EQZ && y.operator === Condition.EQZ) {
-          var g = x.expression.gcd(y.expression);
-          if (g instanceof Expression.Integer) {
-            return null;
-          }
-          y = {
-            operator: y.operator,
-            expression: g
-          };
-        } else {
-          // TODO: both Condition.NEZ - ?
-          var g = x.expression.gcd(y.expression);
-          x = {
-            operator: x.operator,
-            expression: x.expression.divide(g)
-          };
-          if (!Expression.isConstant(x.expression)) {
-            newArray.push(x);
-          }
-        }
-      } else { // !isSingleVariablePolynomial
-        var p = null;
-        var pOperator = null;
-        var pp = null;
-        var other = null;
-        var px = Expression.getMultivariatePolynomial(x.expression);
-        var py = Expression.getMultivariatePolynomial(y.expression);
-        //var xy = Expression.getMultivariatePolynomial(x.expression.multiply(y.expression));
-
-        //console.assert(px != null && py != null);
-
-        if (//xy != null &&
-            //x.operator === Condition.EQZ &&
-            //y.operator === Condition.EQZ &&
-            true) {
-
-          //if (px != null && px.p.getDegree() !== 1 && py == null) {
-            //py = {p: Polynom.toPolynomial(y.expression, px.v), v: px.v};
-            //if (xy.v === py.v) {
-            //  py = null;
-            //}
-          //}
-          //if (px == null && py != null && py.p.getDegree() !== 1) {
-            //px = {p: Polynom.toPolynomial(x.expression, py.v), v: py.v};
-            //if (xy.v === px.v) {
-            //  px = null;
-            //}
-          //}
-          //if (px == null && py == null) {//?TODO:
-          //  px = {p: Polynom.toPolynomial(x.expression, xy.v), v: xy.v};
-          //  py = {p: Polynom.toPolynomial(y.expression, xy.v), v: xy.v};
-          //}
-
-          if (x.operator === Condition.EQZ && px != null && px.p.getDegree() === 1 && y.operator === Condition.EQZ && py != null && py.p.getDegree() === 1) {
-            if (px.v.symbol < py.v.symbol) {//!
-              px = null;
-            }
-          }
-
-          if (y.operator === Condition.EQZ && py != null && py.p.getDegree() === 1) {
-            pp = py;
-            p = x.expression;
-            pOperator = x.operator;
-            other = y;
-          }
-          if (x.operator === Condition.EQZ && px != null && px.p.getDegree() === 1) {
-            pp = px;
-            p = y.expression;
-            pOperator = y.operator;
-            other = x;
-          }
-        }
-        if (pp != null) {
-          var polynom = Polynom.toPolynomial(p, pp.v);
-          var a = polynom.calcAt(pp.p.getCoefficient(0).negate().divide(pp.p.getCoefficient(1)));
-          if (!a.equals(p) && (a.getDenominator() instanceof Expression.Integer)) {
-            var tmp = {
-              operator: pOperator,
-              expression: a
-            };
-            newArray = add(newArray, tmp);
-            if (newArray == null) {
-              return null;
-            }
-            if (true) {
-              newArray = add(newArray, other);
-              if (newArray == null) {
-                return null;
-              }
-              for (var j = i + 1; j < oldArray.length; j += 1) {
-                newArray = add(newArray, oldArray[j]);
-                if (newArray == null) {
-                  return null;
-                }
-              }
-              return newArray;
-            } else {
-              y = other;
-            }
-          } else {
-            newArray.push(x);
-          }
-        } else {
-          newArray.push(x);
-        }
-      }
-    }
-    newArray.push(y);
-    return newArray;
-  };
-  var newArray = add(this.array, {
-    operator: operator,
-    expression: e
-  });
-  if (newArray == null) {
-    return Condition.FALSE;
-  }
-  
-  return new Condition(newArray);
-};
-
-Condition.prototype.andNotZero = function (e) {
-  return this._and(Condition.NEZ, e);
-};
-Condition.prototype.andZero = function (e) {
-  return this._and(Condition.EQZ, e);
-};
-Condition.prototype.isFalse = function () {
-  return this === Condition.FALSE;
-};
-Condition.prototype.isTrue = function () {
-  return this === Condition.TRUE;
-};
-Condition.prototype._toStringInternal = function (toString, comma, neq, eqz) {
-  if (this === Condition.FALSE || this === Condition.TRUE || this.array.length === 0) {
-    //throw new RangeError();
-    return "";
-  }
-  var s = "";
-  for (var i = 0; i < this.array.length; i += 1) {
-    s += comma + toString(this.array[i].expression) + (this.array[i].operator === Condition.NEZ ? neq : "") + (this.array[i].operator === Condition.EQZ ? eqz : "");
-  }
-  return s.slice(comma.length);
-};
-Condition.prototype.toString = function (printOptions) {
-  return this._toStringInternal(function (e) {
-    return e.toString(printOptions);
-  }, ", ", " != 0", " == 0");
-};
-Condition.prototype.toMathML = function (printOptions) {
-  return this._toStringInternal(function (e) {
-    return e.toMathML(printOptions);
-  }, "<mo>,</mo>", "<mo>&ne;</mo><mn>0</mn>", "<mo>=</mo><mn>0</mn>");
-};
-
-Condition.TRUE = new Condition(new Array(0));
-Condition.FALSE = new Condition(undefined);
 
 Expression.rowReductionGaussJordanMontante = function (matrix, method, usage, printOptions, resultCallback, flag0) {
-  if (matrix.cols() < 2) {
-    throw new RangeError();
-  }
   flag0 = flag0 == undefined ? false : flag0;
   var containerId = printOptions.idPrefix + "-" + Expression.id();
   var html = "";
@@ -13855,19 +17824,18 @@ Expression.rowReductionGaussJordanMontante = function (matrix, method, usage, pr
   return html;
 };
 
-function Result(value, condition, eigenvectors, freeVariablesXXX) {
-  this.value = value;
-  this.condition = condition;
-  this.eigenvectors = eigenvectors;
-  this.freeVariablesXXX = freeVariablesXXX;
-}
-Result.prototype.toString = function () {
-  return this.value.toString() + (this.condition.isTrue() ? "" : " if " + this.condition.toString());
-};
-
-Expression.solveByGaussNext = function (ms, printOptions, variableNames, is4Eigenvectors) {
+Expression.solveByGaussNext = function (ms, printOptions, variableNames) {
   var condition = ms.condition;//?
   var m = ms.matrix;
+
+//!?  
+  if (condition != undefined) {
+    m = m.map(function (e, i, j) {
+      return condition.andNotZero(e).isFalse() ? Expression.ZERO : e;
+    });
+  }
+
+  
   // 1. Throwing of null strings - they will be below, but checking: if we find a zero, which at the end has a non-zero, then there are no solutions!;
   var noSolutions = ms.stoppedAtRow !== -1;
   //!hack
@@ -13879,8 +17847,7 @@ Expression.solveByGaussNext = function (ms, printOptions, variableNames, is4Eige
       html: "<div>" +
             "<math>" + outSystem(printOptions, m, variableNames) + "</math>" +
             "</div>" +
-            "<div>" + i18n.thereAreNoSolutions + "</div>",
-      result: undefined
+            "<div>" + i18n.thereAreNoSolutions + "</div>"
     };
   }
 
@@ -13899,8 +17866,10 @@ Expression.solveByGaussNext = function (ms, printOptions, variableNames, is4Eige
   var systemId = containerId + "-" + "system_1";
 
   var mstr = "";
+  
+  if (!m.eql(Matrix.Zero(m.rows(), m.cols()))) {
   mstr += "<div class=\"anchor\" id=\"" + systemId + "\">" +
-          "<table class=\"system-table\">" +
+          "<table role=\"presentation\" class=\"system-table\">" +
           "<tr>" +
           "<td>" +
           "<math>" + outSystem(printOptions, m, variableNames) + "</math>" +
@@ -13911,7 +17880,8 @@ Expression.solveByGaussNext = function (ms, printOptions, variableNames, is4Eige
           "</tr>" +
           "</table>" +
           "</div>";
-  
+  }
+
   var isEquals = function (a, b) {
     if (a.length !== b.length) {
       return false;
@@ -13938,9 +17908,9 @@ Expression.solveByGaussNext = function (ms, printOptions, variableNames, is4Eige
 
     m = Matrix.solveByGaussNext(m, function (m, oldMatrix1, oldMatrix2, i, j) {
         //?
-        if (condition != undefined) {
-        condition = condition.andNotZero(oldMatrix1.e(i, j));
-        }
+        //if (condition != undefined) {
+        //condition = condition.andNotZero(oldMatrix1.e(i, j));
+        //}
         //?
 
         mstr += "<li>";
@@ -13963,7 +17933,7 @@ Expression.solveByGaussNext = function (ms, printOptions, variableNames, is4Eige
           equationSymbols2[k] = v;
           if (k > j && !oldMatrix1.e(i, k).equals(Expression.ZERO)) {
             var pivotRowK = Matrix.getPivotRow(oldMatrix1, k);
-            var y = pivotRowK === -1 ? v : new NonSimplifiedExpression(polynomToExpression3(oldMatrix1, pivotRowK, nsVariableNames));
+            var y = pivotRowK === -1 ? v : new NonSimplifiedExpression(polynomialToExpression3(oldMatrix1, pivotRowK, nsVariableNames));
             equationSymbols2[k] = y;
           }
         }
@@ -13976,16 +17946,16 @@ Expression.solveByGaussNext = function (ms, printOptions, variableNames, is4Eige
         mstr += leftPart.toMathML(printOptions);
         mstr += "<mo>=</mo>";
 
-        var beforeSubstitution = polynomToExpression3(oldMatrix1, i, equationSymbols1).toMathML(Object.assign({}, printOptions, {printId: true}));
+        var beforeSubstitution = polynomialToExpression3(oldMatrix1, i, equationSymbols1).toMathML(Object.assign({}, printOptions, {printId: true}));
         mstr += beforeSubstitution;
 
-        var afterSubstitution = polynomToExpression3(oldMatrix1, i, equationSymbols2).toMathML(Object.assign({}, printOptions, {printId: true}));
+        var afterSubstitution = polynomialToExpression3(oldMatrix1, i, equationSymbols2).toMathML(Object.assign({}, printOptions, {printId: true}));
         if (!isEquals(equationSymbols1, equationSymbols2)) {
           mstr += "<mo>=</mo>";
           mstr += afterSubstitution;
         }
 
-        var afterSimplification = polynomToExpression3(oldMatrix2, i, nsVariableNames).toMathML(printOptions);
+        var afterSimplification = polynomialToExpression3(oldMatrix2, i, nsVariableNames).toMathML(printOptions);
         if (!isEquals(equationSymbols2, nsVariableNames)) {
           mstr += "<mo>=</mo>";
           mstr += afterSimplification;
@@ -14001,7 +17971,7 @@ Expression.solveByGaussNext = function (ms, printOptions, variableNames, is4Eige
         }
         mstr += "</div>";
 
-        var afterDivision = polynomToExpression3(m, i, nsVariableNames).toMathML(printOptions);
+        var afterDivision = polynomialToExpression3(m, i, nsVariableNames).toMathML(printOptions);
         if (!oldMatrix2.e(i, j).equals(Expression.ONE)) {
           mstr += "<div>";
           //mstr += "<b>"; // does not work in Firefox 52 (Windows XP) with MathML
@@ -14023,7 +17993,7 @@ Expression.solveByGaussNext = function (ms, printOptions, variableNames, is4Eige
 
     var solutionsExpressions = new Array(m.cols() - 1);
     for (var i = 0; i < m.cols() - 1; i += 1) {
-      solutionsExpressions[i] = Matrix.getPivotRow(m, i) === -1 ? nsVariableNames[i] : polynomToExpression3(m, Matrix.getPivotRow(m, i), nsVariableNames);
+      solutionsExpressions[i] = Matrix.getPivotRow(m, i) === -1 ? nsVariableNames[i] : new NonSimplifiedExpression(polynomialToExpression3(m, Matrix.getPivotRow(m, i), nsVariableNames));
     }
     var solutionsExpressionsData = new Array(1);
     solutionsExpressionsData[0] = solutionsExpressions;
@@ -14032,8 +18002,6 @@ Expression.solveByGaussNext = function (ms, printOptions, variableNames, is4Eige
     if (true) {
       mstr += "<div>" + i18n.answer + "</div>";
       mstr += "<div class=\"like-table\">";
-      mstr += "<div>";
-      mstr += "<div>";
       mstr += "<ul>";
       for (var i = 0; i < m.cols() - 1; i += 1) {
         mstr += "<li>";
@@ -14043,22 +18011,18 @@ Expression.solveByGaussNext = function (ms, printOptions, variableNames, is4Eige
         mstr += "</li>";
       }
       mstr += "</ul>";
-      mstr += "</div>";
       //?
       if (condition != undefined && !condition.isTrue()) {
-        mstr += "<div>";
         mstr += "<math>";
-        mstr += "<mo>(</mo>";
+        mstr += "<mrow><mo>(</mo>";
         mstr += condition.toMathML(printOptions);
-        mstr += "<mo>)</mo>";
+        mstr += "<mo>)</mo></mrow>";
         mstr += "</math>";
-        mstr += "</div>";
-        if (global.hit != undefined) {
-          global.hit({condition: condition.toString() + "::" + m.toString()});
+        if (typeof hit === "function") {
+          hit({condition: condition.toString() + "::" + m.toString()});
         }
       }
       //?
-      mstr += "</div>";
       mstr += "</div>";
     }
     if (true) {
@@ -14066,33 +18030,29 @@ Expression.solveByGaussNext = function (ms, printOptions, variableNames, is4Eige
       mstr += "<div>" + i18n.generalSolution + " " + "<math>" + "<mi>X</mi><mo>=</mo>" + new Expression.Matrix(solutionsExpressionsMatrix).toMathML(printOptions) + "</math>" + "</div>";
     }
     
-    var eigenvectors = undefined;
-    var freeVariablesXXX = undefined;
     if (isHomogeneous(m)) {
-      var fundamentalSystemHTML = "";
       var solutionSet = Matrix.getSolutionSet(m);
-      if (is4Eigenvectors) {
-        eigenvectors = [];
-        freeVariablesXXX = [];
-      }
+      if (solutionSet.basisVectors.length > 0) {
+        var fundamentalSystemHTML = '';
+        fundamentalSystemHTML += '<math>';
+        fundamentalSystemHTML += '<mrow>';
+        fundamentalSystemHTML += '<mo stretchy="false">{</mo>';
+        fundamentalSystemHTML += solutionSet.basisVectors.length !== 1 ? '<mrow>' : '';
         for (var i = 0; i < solutionSet.basisVectors.length; i += 1) {
-          var basisVector = solutionSet.basisVectors[i];
+          var basisVector = new Expression.Matrix(solutionSet.basisVectors[i]);
           var freeVariable = nsVariableNames[solutionSet.variables[i]];
-          var basisVectorHTML = new Expression.Matrix(basisVector).toMathML(printOptions);
-          fundamentalSystemHTML += (fundamentalSystemHTML !== "" ? "<mo>+</mo>" : "");
-          fundamentalSystemHTML += freeVariable.toMathML(printOptions) + "<mo>&times;</mo>" + basisVectorHTML;
-          if (is4Eigenvectors) {
-            eigenvectors.push(basisVector);
-            freeVariablesXXX.push(freeVariable);
-          }
+          fundamentalSystemHTML += (i !== 0 ? '<mo>+</mo>' : '');
+          fundamentalSystemHTML += '<mrow>' + freeVariable.toMathML(printOptions) + '<mo>&times;</mo>' + basisVector.toMathML(printOptions) + '</mrow>';
         }
-      if (fundamentalSystemHTML !== "") {
-        mstr += "<div>" + i18n.fundamentalSystem + " " + "<math>" + "<mo>{</mo>" + fundamentalSystemHTML + "<mo>}</mo>" + "</math>" + "</div>";
+        fundamentalSystemHTML += solutionSet.basisVectors.length !== 1 ? '</mrow>' : '';
+        fundamentalSystemHTML += '<mo stretchy="false">}</mo>';
+        fundamentalSystemHTML += '</mrow>';
+        fundamentalSystemHTML += '</math>';
+        mstr += '<div>' + i18n.fundamentalSystem + ' ' + fundamentalSystemHTML + '</div>';
       }
     }
     return {
-      html: mstr,
-      result: new Result(solutionsExpressionsMatrix, condition, eigenvectors, freeVariablesXXX)
+      html: mstr
     };
 
 };
@@ -14121,9 +18081,12 @@ Expression.Details.add({
 });
 
 //TODO: ?
-Polynom.toM1 = function (c, np, roots) {
+Polynomial.toM1 = function (c, np, roots) {
   var e = undefined;
   if (!c.equals(Expression.ONE)) {
+    if (!c.equals(Expression.ONE.negate())) {
+      c = new NonSimplifiedExpression(c);
+    }
     e = e != undefined ? new Expression.Multiplication(e, c) : c;
   }
   if (np.getDegree() === 0) {
@@ -14133,8 +18096,8 @@ Polynom.toM1 = function (c, np, roots) {
     }
   }
   for (var i = 0; i < roots.length; i += 1) {
-    var p = Polynom.of(roots[i].negate(), Expression.ONE);
-    //html += "<mfenced open=\"(\" close=\")\"><mrow>" +  + "</mrow></mfenced>";
+    var p = Polynomial.of(roots[i].negate(), Expression.ONE);
+    //html += "<mrow><mo>(</mo>" +  + "<mo>)</mo></mrow>";
     var w = new Expression.Polynomial(p);
     e = e != undefined ? new Expression.Multiplication(e, w) : w;
   }
@@ -14142,7 +18105,7 @@ Polynom.toM1 = function (c, np, roots) {
     //TODO: remove brackets
     var w = new Expression.Polynomial(np);
     e = e != undefined ? new Expression.Multiplication(e, w) : w;
-    //html += "<mfenced open=\"(\" close=\")\"><mrow>" + np.toMathML(printOptions) + "</mrow></mfenced>";
+    //html += "<mrow><mo>(</mo>" + np.toMathML(printOptions) + "<mo>)</mo></mrow>";
   }
   return e;
 };
@@ -14153,31 +18116,32 @@ var polynomialRootsCallback = function (info, printOptions) {
   var link = "";
   if (info.type === "useTheRationalRootTest") {
     link = i18n.useTheRationalRootTestLink;
-  }
-  if (info.type === "solveQuadraticEquation") {
+  } else if (info.type === "solveQuadraticEquation") {
     link = i18n.solveQuadraticEquationLink;
-  }
-  if (info.type === "solvePalindromicEquaion") {
+  } else if (info.type === "solvePalindromicEquaion") {
     link = i18n.solvePalindromicEquaionLink;
-  }
-  if (info.type === "(ax+b)**n") {
+  } else if (info.type === "(ax+b)**n") {
     link = i18n.binomialTheoremLink;
-  }
-  if (info.type === "solveCubicEquation") {//?
+  } else if (info.type === "solveCubicEquation") {//?
     //TODO:
     link = i18n.solveCubicEquationLink;
-  }
-  if (info.type === "methodOfKronecker") {//?
+  } else if (info.type === "methodOfKronecker") {//?
     link = i18n.methodOfKroneckerLink;
+  } else if (info.type === "applyDifferenceOfSquaresRule") {
+    link = i18n.applyDifferenceOfSquaresRuleLink;
+  } else if (info.type === "applyDifferenceOfCubesRule") {
+    link = i18n.applyDifferenceOfCubesRuleLink;
+  } else if (info.type === "applyDifferenceOfNthPowersRule") {
+    link = i18n.applyDifferenceOfNthPowersRuleLink;
   }
   var result = "";
-  if (info.type === "t = x^g") {
+  if (info.type === "t = x^g" || (link === "" && (info.type === "applyDifferenceOfSquaresRule" || info.type === "applyDifferenceOfCubesRule" || info.type === "applyDifferenceOfNthPowersRule"))) {
     var variableName = printOptions.polynomialVariable;
-    result += "<munder><mrow><mo>=</mo></mrow><mrow><mi>t</mi><mo>=</mo><msup><mrow><mi>${x}</mi></mrow><mrow><mn>${g}</mn></mrow></msup></mrow></munder>".replace(/\$\{x\}/g, variableName).replace(/\$\{g\}/g, info.g);
+    result += "<munder><mo>=</mo><mrow><mi>t</mi><mo>=</mo><msup><mi>${x}</mi><mn>${g}</mn></msup></mrow></munder>".replace(/\$\{x\}/g, variableName).replace(/\$\{g\}/g, info.g);
   } else {
-    result += (link === "" ? "<mo>=</mo>" : "<munder><mrow><mo>=</mo></mrow><mrow><mtext>" + link + "</mtext></mrow></munder>");
+    result += (link === "" ? "<mo>=</mo>" : "<munder><mo>=</mo><mtext>" + link + "</mtext></munder>");
   }
-  result += Polynom.toM1(info.content, info.newPolynomial, info.roots).toMathML(printOptions);
+  result += Polynomial.toM1(info.content, info.newPolynomial, info.roots).toMathML(printOptions);
   return result;
 };
 
@@ -14225,7 +18189,9 @@ Expression.getEigenvaluesWithSteps = function (printOptions, matrix) {
 
     html += "<li>";
     html += "<math>";
-    html += "<msub><mrow><mi>&lambda;</mi></mrow><mrow><mn>" + (n + 1) + "</mn></mrow></msub>" + equalsMathML + eigenvalue.toMathML(printOptions);
+    html += "<msub><mi>&lambda;</mi><mn>" + (n + 1) + "</mn></msub>";
+    html += equalsMathML;
+    html += eigenvalue.toMathML(printOptions);
     html += "</math>";
     html += "</li>";
   }
@@ -14251,7 +18217,7 @@ Expression.getEigenvectorsWithSteps = function (printOptions, matrix, eigenvalue
 
     var equalsMathML = "<mo>" + (eigenvalues[i].isExact() ? "=" : "&asymp;") + "</mo>";
     
-    var lambdaMathML = "<msub><mrow><mi>&lambda;</mi></mrow><mrow><mn>" + (i + 1) + "</mn></mrow></msub>";
+    var lambdaMathML = "<msub><mi>&lambda;</mi><mn>" + (i + 1) + "</mn></msub>";
     
     // TODO: fix output for diagonalization - instead of `X = {{0}, {c_1}, {0}}` should be `... let c_1 = 1, then X = {{0}, {1}, {0}}`
     html += "<div class=\"anchor\" id=\"" + (printOptions.idPrefix + "-eigenvalue-" + (i + 1)) + "\">";
@@ -14264,11 +18230,11 @@ Expression.getEigenvectorsWithSteps = function (printOptions, matrix, eigenvalue
 
     //TODO: syncronize the ExpressionParser with i18n.identityMatrixDenotation
     //TODO: a tooltip for identityMatrixDenotation - identity Matrix
-    //TODO: invisible times (&#x2062;) -> middle dot - ?
+    //TODO: invisible times (&it;) -> middle dot - ?
 
     html += "<div>";
     html += "<math>";
-    html += "<mi>A</mi><mo>&minus;</mo>" + lambdaMathML + "<mo lspace=\"0em\" rspace=\"0em\">&#x2062;</mo><mi>" + i18n.identityMatrixDenotation + "</mi>";
+    html += "<mrow><mi>A</mi><mo>&minus;</mo><mrow>" + lambdaMathML + "<mo>&it;</mo><mi>" + i18n.identityMatrixDenotation + "</mi></mrow></mrow>";
     html += equalsMathML;
     html += new Expression.Matrix(mm).toMathML(printOptions);
     html += "</math>";
@@ -14276,13 +18242,13 @@ Expression.getEigenvectorsWithSteps = function (printOptions, matrix, eigenvalue
 
     // Av=\lambda v
     html += "<div>";
-    html += "<math><mrow><mi>A</mi><mo lspace=\"0em\" rspace=\"0em\">&#x2062;</mo><mi>v</mi></mrow><mo>=</mo><mrow><mi>&lambda;</mi><mo lspace=\"0em\" rspace=\"0em\">&#x2062;</mo><mi>v</mi></mrow></math>";
+    html += "<math><mrow><mi>A</mi><mo>&it;</mo><mi>v</mi></mrow><mo>=</mo><mrow><mi>&lambda;</mi><mo>&it;</mo><mi>v</mi></mrow></math>";
     html += " ";
     html += i18n.eigenvalueEquationLink; //TODO: remove the link - ?
     html += "</div>";
     // (A-\lambda E)v=0
     html += "<div>";
-    html += "<math><mrow><mo>(</mo><mrow><mi>A</mi><mo>&minus;</mo><mi>&lambda;</mi><mo lspace=\"0em\" rspace=\"0em\">&#x2062;</mo><mi>" + i18n.identityMatrixDenotation + "</mi></mrow><mo>)</mo><mo lspace=\"0em\" rspace=\"0em\">&#x2062;</mo><mi>v</mi></mrow><mo>=</mo><mi>0</mi></math>";
+    html += "<math><mrow><mrow><mo>(</mo><mrow><mi>A</mi><mo>&minus;</mo><mrow><mi>&lambda;</mi><mo>&it;</mo><mi>" + i18n.identityMatrixDenotation + "</mi></mrow></mrow><mo>)</mo></mrow><mo>&it;</mo><mi>v</mi></mrow><mo>=</mo><mn>0</mn></math>";
     html += "</div>";
 
     html += "<div>";
@@ -14295,31 +18261,30 @@ Expression.getEigenvectorsWithSteps = function (printOptions, matrix, eigenvalue
 
     //TODO: Matrix.GaussMontante
 
-    var solutions = [];
+    var variableNames = makeDefaultVariableNames(fullMatrix.cols() - 1);
+    var solutionSet = undefined;
     var solutionHTML = "";
     solutionHTML += Expression.rowReductionGaussJordanMontante(fullMatrix, Matrix.GaussJordan, "solving", Object.assign({}, printOptions, {columnlines: -1}), function (result) {
-      var tmp = Expression.solveByGaussNext(result, printOptions, undefined, true);
-      solutions.push(tmp.result || "");
+      var tmp = Expression.solveByGaussNext(result, printOptions, variableNames);
+      solutionSet = Matrix.getSolutionSet(result.matrix);
       return tmp.html;
     }, true);
-    var array = solutions[0].eigenvectors;
-    var freeVariablesXXX = solutions[0].freeVariablesXXX;
 
     html += "<div>" + solutionHTML + "</div>";
 
     html += "<div>";
-    for (var j = 0; j < array.length; j += 1) {
-      var eigenvector = array[j];
+    for (var j = 0; j < solutionSet.basisVectors.length; j += 1) {
+      var eigenvector = solutionSet.basisVectors[j];
       eigenvectors.push(eigenvector);
       var index = eigenvectors.length;
       //TODO: <li> - ?
       html += j !== 0 ? "; " : "";
       html += i18n.Let;
       html += " ";
-      for (var k = 0; k < freeVariablesXXX.length; k += 1) {
+      for (var k = 0; k < solutionSet.variables.length; k += 1) {
         html += k !== 0 ? ", " : "";
         html += "<math>";
-        html += freeVariablesXXX[k].toMathML(printOptions) + "<mo>=</mo>" + "<mn>" + (k === j ? 1 : 0) + "</mn>";
+        html += new Expression.Symbol(variableNames[solutionSet.variables[k]]).toMathML(printOptions) + "<mo>=</mo>" + "<mn>" + (k === j ? 1 : 0) + "</mn>";
         html += "</math>";
       }
       html += ", ";
@@ -14357,7 +18322,7 @@ var polyfromtable = function (m) {
   for (var i = 0; i < m.cols(); i += 1) {
     coefficients[i] = m.e(0, m.cols() - 1 - i);
   }
-  return Polynom.from(coefficients);
+  return Polynomial.from(coefficients);
 };
 
 
@@ -14383,9 +18348,7 @@ Expression.Details.add({
     var html = "";
     html += "<div>";
     html += "<math>";
-    html += "<mrow>";
     html +=  polynomial.toMathML(printOptions);
-    html += "</mrow>";
     html += steps;
     html += "</math>";
     html += "</div>";
@@ -14416,15 +18379,25 @@ Expression.Details.add({
     var pB = polyfromtable(second.matrix);
     var result = pA.multiply(pB);
     return "<math>" +
-           "<mfenced open=\"(\" close=\")\">" + pA.toMathML(printOptions) + "</mfenced>" +
+           "<mrow>" +
+           "<mrow><mo>(</mo>" + pA.toMathML(printOptions) + "<mo>)</mo></mrow>" +
            "<mo>&times;</mo>" +
-           "<mfenced open=\"(\" close=\")\">" + pB.toMathML(printOptions) + "</mfenced>" +
+           "<mrow><mo>(</mo>" + pB.toMathML(printOptions) + "<mo>)</mo></mrow>" +
+           "</mrow>" +
            "<mo>=</mo>" +
            result.toMathML(printOptions) +
            "</math>";
   }
 });
 
+RPN.getPositionInfo = function () {
+  return {
+    input: ExpressionParser.input,
+    startPosition: ExpressionParser.startPosition,
+    endPosition: ExpressionParser.endPosition,
+    p: RPN.p
+  };
+};
 RPN.getMatrix = function (s) {
   // TODO: insertion with drag and drop should not freeze all because of calculations
   var matrix = undefined;
@@ -14504,8 +18477,8 @@ RPN.checkExpressions = function (textareaValue, type) {
   return true;
 };
 RPN.checkExpression = function (input) {
-  return ExpressionParser.parse(input, new ExpressionParser.Context()) != undefined;
   //return ExpressionParser.parse(input) != undefined;
+  return ExpressionParser.parse(input, new ExpressionParser.Context()) != undefined;
 };
 
 RPN.runExpression = function (input, kInputValue, kInputId, matrixTableStates, printOptions) {
@@ -14598,39 +18571,28 @@ RPN.runExpression = function (input, kInputValue, kInputId, matrixTableStates, p
     resultError = error;
   }
   Expression.callback = undefined;
-  var detailsHTML = createDetailsSummary(printOptions.idPrefix, details, details.length === 1 ? 100 : 1);
+  var detailsHTML = createDetailsSummary(printOptions == null ? "g" : printOptions.idPrefix, details, details.length === 1 ? 100 : 1);
   return {resultError: resultError, details: details, expressionString: expressionString, resultHTML: resultHTML, resultMatrix: resultMatrix, detailsHTML: detailsHTML};
 };
 
-RPN.getDetails = function (array, printOptions) {
-  var html = "";
-  for (var i = 0; i < array.length; i += 1) {
-    var data = array[i];
-    html += "<hr />";
-    var callback = Expression.Details.getCallback(data.type);
-    if (callback != undefined) {
-      var matrix = ExpressionParser.parse(data.matrix).matrix;//?
-      var second = data.second != undefined ? ExpressionParser.parse(data.second).matrix : undefined;
-      html += callback(printOptions, matrix, second);
-    } else {
-      throw new Error(data.type);
-    }
+RPN.getDetails = function (data, printOptions) {
+  var callback = Expression.Details.getCallback(data.type);
+  if (callback == undefined) {
+    throw new Error(data.type);
   }
+  var matrix = ExpressionParser.parse(data.matrix).matrix;//?
+  var second = data.second != undefined ? ExpressionParser.parse(data.second).matrix : undefined;
+  var html = callback(printOptions, matrix, second);
   return html;
 };
 
   // TODO: fix?
 
-  global.RPN = RPN;
-  //TODO: remove
-  global.createDetailsSummary = createDetailsSummary;
+  //export createDetailsSummary;
+  //TODO: remove createDetailsSummary
 
-
-}(this));
-
-
-(function () {
-  "use strict";
+  RPN.createDetailsSummary = createDetailsSummary;
+  globalThis.RPN = RPN;
 
 Expression.Details.add({
   type: "system-of-equations",
@@ -14657,38 +18619,65 @@ Expression.Details.add({
     //TODO: fix
     html += "<div>";
     html += "<math>";
-    html += "<mfenced open=\"{\" close=\" \">";
-    html += "<mtable>";
+    html += "<mrow><mo>{</mo>";
+    html += "<mtable rowspacing=\"0ex\">";
     for (var i = 0; i < equations.length; i += 1) {
       html += "<mtr><mtd>" + equations[i].left.toMathML(printOptions) + "<mo>=</mo>" + equations[i].right.toMathML(printOptions) + "</mtd></mtr>";
     }
     html += "</mtable>";
-    html += "</mfenced>";
+    html += "</mrow>";
     html += "</math>";
     html += "</div>";
 
     //TODO: is linear - ?
     //TODO: matrices - ?
-    var c = Expression.Condition.TRUE;
+    var c = Condition.TRUE;
     for (var i = 0; i < equations.length; i += 1) {
       var x = equations[i].left.subtract(equations[i].right);
       c = c.andZero(x);
     }
     html += "<div>";
-    html += "<math>";
-    html += c.toMathML(printOptions);
-    html += "</math>";
+    if (c.isFalse()) {
+      html += "&minus;";//TODO: ?
+    } else if (c.isTrue()) {
+      html += "✓";//TODO: ?
+    } else {
+      html += "<math>" + c.toMathML(printOptions) + "</math>";
+    }
     html += "</div>";
     return html;
   }
 });
 
-}());
-
-/*global i18n, Expression, Matrix */
-
+})();
 (function () {
 "use strict";
+/*global i18n*/
+
+
+
+
+
+
+var getSolveDetails = function (printOptions, matrix, variableNames, title, method) {
+  if (matrix.cols() < 2) {
+    throw new RangeError("ValueMissingError:A-textarea");//TODO: fix
+  }
+  //if (variableNames == undefined) {
+    var m = matrix.slice(0, matrix.rows(), 0, matrix.cols() - 1);
+    var b = matrix.slice(0, matrix.rows(), matrix.cols() - 1, matrix.cols());
+    matrix = Matrix.trimRight(m).augment(b);
+  //}
+  var html = "";
+  html += "<h4>" + title + "</h4>";
+  //html += "<div>" + i18n.augmentedMatrixOfTheSystem + "</div>";
+  html += "<div>" + i18n.convertTheAugmentedMatrixIntoTheRowEchelonForm + "</div>";
+  html += Expression.rowReductionGaussJordanMontante(matrix, method, "solving", Object.assign({}, printOptions, {columnlines: -1}), function (result) {
+    var tmp = Expression.solveByGaussNext(result, printOptions, variableNames);
+    return tmp.html;
+  }, false);
+  return html;
+};
 
 Expression.Details.add({
   type: "solve-using-Gaussian-elimination",
@@ -14698,23 +18687,7 @@ Expression.Details.add({
   minRows: 1,
   priority: 1,
   callback: function (printOptions, matrix, variableNames) {
-    if (matrix.cols() < 2) {
-      throw new RangeError("ValueMissingError:A-textarea");//TODO: fix
-    }
-    if (variableNames == undefined) {
-      var m = matrix.slice(0, matrix.rows(), 0, matrix.cols() - 1);
-      var b = matrix.slice(0, matrix.rows(), matrix.cols() - 1, matrix.cols());
-      matrix = Matrix.trimRight(m).augment(b);
-    }
-    var html = "";
-    html += "<h4>" + i18n.solutionByGaussianElimination + "</h4>";
-    //html += "<div>" + i18n.augmentedMatrixOfTheSystem + "</div>";
-    html += "<div>" + i18n.convertTheAugmentedMatrixIntoTheRowEchelonForm + "</div>";
-    html += Expression.rowReductionGaussJordanMontante(matrix, Matrix.Gauss, "solving", Object.assign({}, printOptions, {columnlines: -1}), function (result) {
-      var tmp = Expression.solveByGaussNext(result, printOptions, variableNames, false);
-      return tmp.html;
-    }, false);
-    return html;
+    return getSolveDetails(printOptions, matrix, variableNames, i18n.solutionByGaussianElimination, Matrix.Gauss);
   }
 });
 
@@ -14726,23 +18699,7 @@ Expression.Details.add({
   minRows: 1,
   priority: 1,
   callback: function (printOptions, matrix, variableNames) {
-    if (matrix.cols() < 2) {
-      throw new RangeError("ValueMissingError:A-textarea");//TODO: fix
-    }
-    if (variableNames == undefined) {
-      var m = matrix.slice(0, matrix.rows(), 0, matrix.cols() - 1);
-      var b = matrix.slice(0, matrix.rows(), matrix.cols() - 1, matrix.cols());
-      matrix = Matrix.trimRight(m).augment(b);
-    }
-    var html = "";
-    html += "<h4>" + i18n.solutionByGaussJordanElimination + "</h4>";
-    //html += "<div>" + i18n.augmentedMatrixOfTheSystem + "</div>";
-    html += "<div>" + i18n.convertTheAugmentedMatrixIntoTheRowEchelonForm + "</div>";
-    html += Expression.rowReductionGaussJordanMontante(matrix, Matrix.GaussJordan, "solving", Object.assign({}, printOptions, {columnlines: -1}), function (result) {
-      var tmp = Expression.solveByGaussNext(result, printOptions, variableNames, false);
-      return tmp.html;
-    }, false);
-    return html;
+    return getSolveDetails(printOptions, matrix, variableNames, i18n.solutionByGaussJordanElimination, Matrix.GaussJordan);
   }
 });
 
@@ -14754,23 +18711,7 @@ Expression.Details.add({
   minRows: 1,
   priority: 2,
   callback: function (printOptions, matrix, variableNames) {
-    if (matrix.cols() < 2) {
-      throw new RangeError("ValueMissingError:A-textarea");//TODO: fix
-    }
-    if (variableNames == undefined) {
-      var m = matrix.slice(0, matrix.rows(), 0, matrix.cols() - 1);
-      var b = matrix.slice(0, matrix.rows(), matrix.cols() - 1, matrix.cols());
-      matrix = Matrix.trimRight(m).augment(b);
-    }
-    var html = "";
-    html += "<h4>" + i18n.solutionByMethodOfMontante + "</h4>";
-    //html += "<div>" + i18n.augmentedMatrixOfTheSystem + "</div>";
-    html += "<div>" + i18n.convertTheAugmentedMatrixIntoTheRowEchelonForm + "</div>";
-    html += Expression.rowReductionGaussJordanMontante(matrix, Matrix.GaussMontante, "solving", Object.assign({}, printOptions, {columnlines: -1}), function (result) {
-      var tmp = Expression.solveByGaussNext(result, printOptions, variableNames, false);
-      return tmp.html;
-    }, false);
-    return html;
+    return getSolveDetails(printOptions, matrix, variableNames, i18n.solutionByMethodOfMontante, Matrix.GaussMontante);
   }
 });
 
@@ -14781,9 +18722,9 @@ Expression.Details.add({
                Expression.p("(a_(${r},${c})*a_(i,j)-a_(i,${c})*a_(${r},j))/p_${k}"
                               .replace(/\$\{r\}/g, (r + 1).toString())
                               .replace(/\$\{c\}/g, (c + 1).toString())
-                              .replace(/\$\{k\}/g, (k + 1).toString()), undefined, printOptions) +
+                              .replace(/\$\{k\}/g, (k + 1).toString())) +
                "<mo>&rarr;</mo>" +
-               Expression.p("a_(i,j)", undefined, printOptions) +
+               Expression.p("a_(i,j)") +
              "</mrow>";
     };
     var cellId = function (containerId, matrixId, i, j) {
@@ -14807,29 +18748,19 @@ Expression.Details.add({
           }
         }));
         var pivotElementText = "<munder>" +
-                               "<mrow>" +
                                "<mtext>" + i18n.eliminationDetails.pivotElement + "</mtext>" +
-                               "</mrow>" +
-                               "<mrow>" +
                                "<munder>" +
                                "<mrow>" +
-                               Expression.p("p_" + ((k + 1).toString()) + "=a_" + (args.pivotRow + 1).toString() + (args.pivotColumn + 1).toString() + "=q", {q: args.oldMatrix.e(args.pivotRow, args.pivotColumn)}, printOptions) +
+                               Expression.p("p_" + (k + 1) + "=a_(" + (args.pivotRow + 1) + "," + (args.pivotColumn + 1) + ")=q", {q: args.oldMatrix.e(args.pivotRow, args.pivotColumn)}, printOptions) +
                                "</mrow>" +
-                               "<mrow>" +
                                (stepCondition.isTrue() ? "" : "<munder>") +
-                               "<mrow>" +
                                t(args.pivotRow, args.pivotColumn, k - 1) +
-                               "</mrow>" +
-                               (stepCondition.isTrue() ? "" : "<mrow>") +
                                (stepCondition.isTrue() ? "" : stepCondition.toMathML(printOptions)) +
-                               (stepCondition.isTrue() ? "" : "</mrow>") +
                                (stepCondition.isTrue() ? "" : "</munder>") +
-                               "</mrow>" +
                                "</munder>" +
-                               "</mrow>" +
                                "</munder>";                               
         html += "<math>";
-        html += a0 + "<mpadded width=\"+0.8em\" lspace=\"+0.4em\"><munder><mrow><mo stretchy=\"false\">~</mo></mrow><mrow>" + pivotElementText + "</mrow></munder></mpadded>";
+        html += a0 + "<mpadded width=\"+0.8em\" lspace=\"+0.4em\"><munder><mo stretchy=\"false\">~</mo>" + pivotElementText + "</munder></mpadded>";
         html += "</math>";
         k += 1;
 
@@ -14848,7 +18779,7 @@ Expression.Details.add({
               var tooltips = "<a class=\"a-tooltip\" data-for=\"" + cellId(containerId, k, targetRow, i) + "\" data-tooltip=\"" + divId + "\"></a>";
               text += "<div id=\"" + divId + "\">" +
                       "<math>" +
-                      Expression.p("a_" + (targetRow + 1).toString() + (i + 1).toString() + "=(a*b-c*d)/p=r", {
+                      Expression.p("a_(" + (targetRow + 1) + "," + (i + 1) + ")=(a*b-c*d)/p=r", {
                         a: args.oldMatrix.e(args.pivotRow, args.pivotColumn),
                         b: args.oldMatrix.e(targetRow, i),
                         c: args.oldMatrix.e(targetRow, args.pivotColumn),
@@ -14866,37 +18797,41 @@ Expression.Details.add({
         }
         html += "<span hidden>" + text + "</span>";
       } else {
-        throw new Error(args.type);
+        throw new TypeError(args.type);
       }
     }
     return html;
   };
+  
+var getDeterminantDetails = function (printOptions, matrix, method, title, header) {
+  if (!matrix.isSquare()) {
+    throw new RangeError("NonSquareMatrixException");
+  }
+  var html = "";
 
-Expression.Details.add({
-  type: "determinant-Gauss",
-  i18n: function () {
-    return i18n.methodOfGauss;
-  },
-  priority: 1,
-  callback: function (printOptions, matrix) {
+  html += "<div>";
+  html += "<math>";
+  html += new Expression.Determinant(new Expression.Matrix(matrix)).toMathML(printOptions) + "<mo>=</mo><mi>?</mi>";
+  html += "</math>";
+  html += "</div>";
+
+  //?
+  if (header != undefined) {
+    html += "<h4>";
+    html += header;
+    html += "</h4>";
+  }
+  html += "<p>" + title + "</p>";
+
+  html += Expression.rowReductionGaussJordanMontante(matrix, method, "determinant", printOptions, function (tmp) {
+    var rowEchelonMatrix = tmp.matrix;
+
     var html = "";
-
     html += "<div>";
     html += "<math>";
-    html += new Expression.Determinant(new Expression.Matrix(matrix)).toMathML(printOptions) + "<mo>=</mo><mn>?</mn>";
-    html += "</math>";
-    html += "</div>";
-
-    html += "<p>" + i18n.determinantDetails.start + "</p>";
-
-    html += Expression.rowReductionGaussJordanMontante(matrix, Matrix.Gauss, "determinant", printOptions, function (tmp) {
-      var rowEchelonMatrix = tmp.matrix;
-
-      var html = "";
-      html += "<div>";
-      html += "<math>";
-      html += new Expression.Determinant(new Expression.Matrix(matrix)).toMathML(printOptions);
-      html += "<mo>=</mo>";
+    html += new Expression.Determinant(new Expression.Matrix(matrix)).toMathML(printOptions);
+    html += "<mo>=</mo>";
+    if (method === Matrix.Gauss) {
       html += new Expression.Determinant(new Expression.Matrix(rowEchelonMatrix)).toMathML(printOptions);
       html += "<mo>=</mo>";
       var result = rowEchelonMatrix.determinant();
@@ -14911,12 +18846,27 @@ Expression.Details.add({
         html += "<mo>=</mo>";
       }
       html += result.toMathML(printOptions);
-      html += "</math>";
-      html += "</div>";
-      return html;
-    });
+    } else {
+      var result = (tmp.stoppedAtRow !== -1 ? Expression.ZERO : rowEchelonMatrix.e(rowEchelonMatrix.rows() - 1, rowEchelonMatrix.cols() - 1));
+      html += result.toMathML(printOptions);
+    }
 
+    html += "</math>";
+    html += "</div>";
     return html;
+  });
+
+  return html;
+};
+
+Expression.Details.add({
+  type: "determinant-Gauss",
+  i18n: function () {
+    return i18n.methodOfGauss;
+  },
+  priority: 1,
+  callback: function (printOptions, matrix) {
+    return getDeterminantDetails(printOptions, matrix, Matrix.Gauss, i18n.determinantDetails.start, undefined);
   }
 });
 
@@ -14927,49 +18877,43 @@ Expression.Details.add({
   },
   priority: 2,
   callback: function (printOptions, matrix) {
-    if (!matrix.isSquare()) {
-      throw new RangeError("NonSquareMatrixException");
-    }
-
-    var html = "";
-
-    html += "<div>";
-    html += "<math>";
-    html += new Expression.Determinant(new Expression.Matrix(matrix)).toMathML(printOptions) + "<mo>=</mo><mn>?</mn>";
-    html += "</math>";
-    html += "</div>";
-
-    //?
-    html += "<h4>";
-    html += i18n.methodOfMontanteDetails.determinantDetails.header;
-    html += "</h4>";
-    html += "<p>";
-    html += i18n.methodOfMontanteDetails.determinantDetails.start
+    var title = i18n.methodOfMontanteDetails.determinantDetails.start
                 .replace(/\$\{someDetails3\}/g, Expression.getSomeDetails("someDetails3", printOptions))
-                .replace(/\$\{a_\(i,j\)\=\(a_\(r,c\)\*a_\(i,j\)\-a_\(i,c\)\*a_\(r,j\)\)\/p\}/g, "<math>" + Expression.p("a_(i,j)=(a_(r,c)*a_(i,j)-a_(i,c)*a_(r,j))/p", undefined, printOptions) + "</math>")
-                .replace(/\$\{a_\(r,c\)\}/g, "<math>" + Expression.p("a_(r,c)", undefined, printOptions) + "</math>")
+                .replace(/\$\{a_\(i,j\)\=\(a_\(r,c\)\*a_\(i,j\)\-a_\(i,c\)\*a_\(r,j\)\)\/p\}/g, "<math>" + Expression.p("a_(i,j)=(a_(r,c)*a_(i,j)-a_(i,c)*a_(r,j))/p") + "</math>")
+                .replace(/\$\{a_\(r,c\)\}/g, "<math>" + Expression.p("a_(r,c)") + "</math>")
                 .replace(/\$\{r\}/g, "<math>" + "<mi>r</mi>" + "</math>")
                 .replace(/\$\{c\}/g, "<math>" + "<mi>c</mi>" + "</math>")
                 .replace(/\$\{p\}/g, "<math>" + "<mi>p</mi>" + "</math>");
-    html += "</p>";
-
-    html += Expression.rowReductionGaussJordanMontante(matrix, Matrix.GaussMontante, "determinant", printOptions, function (tmp) {
-      var rowEchelonMatrix = tmp.matrix;
-      var html = "";
-      html += "<div>";
-      html += "<math>";
-      html += new Expression.Determinant(new Expression.Matrix(matrix)).toMathML(printOptions);
-      html += "<mo>=</mo>";
-      var result = (tmp.stoppedAtRow !== -1 ? Expression.ZERO : rowEchelonMatrix.e(rowEchelonMatrix.rows() - 1, rowEchelonMatrix.cols() - 1));
-      html += result.toMathML(printOptions);
-      html += "</math>";
-      html += "</div>";
-      return html;
-    });
-
-    return html;
+    return getDeterminantDetails(printOptions, matrix, Matrix.GaussMontante, title, i18n.methodOfMontanteDetails.determinantDetails.header);
   }
 });
+
+var getRankDetails = function (printOptions, matrix, method, title) {
+  var html = "";
+  html += "<div>";
+  html += "<math>";
+  html += new Expression.Rank(new Expression.Matrix(matrix)).toMathML(printOptions) + "<mo>=</mo><mi>?</mi>";
+  html += "</math>";
+  html += "</div>";
+  if (title != undefined) {//TODO: remove
+    html += "<p>" + title + "</p>";
+  }
+  html += Expression.rowReductionGaussJordanMontante(matrix, method, "", printOptions, function (tmp) {
+    var rowEchelonMatrix = tmp.matrix;
+    var html = "";
+    html += "<div>";
+    html += "<math>";
+    html += new Expression.Rank(new Expression.Matrix(matrix)).toMathML(printOptions);
+    html += "<mo>=</mo>";
+    html += new Expression.Rank(new Expression.Matrix(rowEchelonMatrix)).toMathML(printOptions);
+    html += "<mo>=</mo>";
+    html += "<mn>" + rowEchelonMatrix.rank().toString() + "</mn>";
+    html += "</math>";
+    html += "</div>";
+    return html;
+  });//?
+  return html;
+};
 
 Expression.Details.add({
   type: "rank-Gauss",
@@ -14979,28 +18923,7 @@ Expression.Details.add({
   minRows: 2,
   priority: 1,
   callback: function (printOptions, matrix) {
-    var html = "";
-    html += "<div>";
-    html += "<math>";
-    html += new Expression.Rank(new Expression.Matrix(matrix)).toMathML(printOptions) + "<mo>=</mo><mn>?</mn>";
-    html += "</math>";
-    html += "</div>";
-    html += "<p>" + i18n.rankDetails.start + "</p>";
-    html += Expression.rowReductionGaussJordanMontante(matrix, Matrix.Gauss, "", printOptions, function (tmp) {
-      var rowEchelonMatrix = tmp.matrix;
-      var html = "";
-      html += "<div>";
-      html += "<math>";
-      html += new Expression.Rank(new Expression.Matrix(matrix)).toMathML(printOptions);
-      html += "<mo>=</mo>";
-      html += new Expression.Rank(new Expression.Matrix(rowEchelonMatrix)).toMathML(printOptions);
-      html += "<mo>=</mo>";
-      html += "<mn>" + rowEchelonMatrix.rank().toString() + "</mn>";
-      html += "</math>";
-      html += "</div>";
-      return html;
-    });//?
-    return html;
+    return getRankDetails(printOptions, matrix, Matrix.Gauss, i18n.rankDetails.start);
   }
 });
 
@@ -15012,35 +18935,63 @@ Expression.Details.add({
   minRows: 2,
   priority: 2,
   callback: function (printOptions, matrix) {
-    var html = "";
-    html += "<div>";
-    html += "<math>";
-    html += new Expression.Rank(new Expression.Matrix(matrix)).toMathML(printOptions) + "<mo>=</mo><mn>?</mn>";
-    html += "</math>";
-    html += "</div>";
     //TODO:
-    //html += "<p>" + i18n.methodOfMontanteDetails.rankDetails.start + "</p>";
-    html += Expression.rowReductionGaussJordanMontante(matrix, Matrix.GaussMontante, "", printOptions, function (tmp) {
-      var html = "";
-      var rowEchelonMatrix = tmp.matrix;
-      html += "<div>";
-      html += "<math>";
-      html += new Expression.Rank(new Expression.Matrix(matrix)).toMathML(printOptions);
-      html += "<mo>=</mo>";
-      html += new Expression.Rank(new Expression.Matrix(rowEchelonMatrix)).toMathML(printOptions);
-      html += "<mo>=</mo>";
-      html += "<mn>" + rowEchelonMatrix.rank().toString() + "</mn>";
-      html += "</math>";
-      html += "</div>";
-      return html;
-    });//?
-    return html;
+    //i18n.methodOfMontanteDetails.rankDetails.start
+    return getRankDetails(printOptions, matrix, Matrix.GaussMontante, undefined);
   }
 });
 
 // TODO:
 // http://www.mathsisfun.com/algebra/matrix-inverse-row-operations-gauss-jordan.html
 // i18n.inverseDetails.rowSwapNegate = "- Trocamos o linha {s} e o linha {c}:, ...";
+
+var getInverseDetails = function (printOptions, matrix, method, title) {
+  var html = "";
+  html += "<div>";
+  html += "<math>";
+  html += new Expression.Exponentiation(new Expression.Matrix(matrix), Expression.ONE.negate()).toMathML(printOptions) + "<mo>=</mo><mi>?</mi>";
+  html += "</math>";
+  html += "</div>";
+  if (title != undefined) {//TODO: remove
+    html += "<p>" + title + "</p>";
+  }
+  //TODO: merge (?)
+  var augmented = matrix.augment(Matrix.I(matrix.rows()));
+  html += Expression.rowReductionGaussJordanMontante(augmented, method, "inverse", Object.assign({}, printOptions, {columnlines: -matrix.cols()}), function (tmp) {
+    var augmentedResult = tmp.matrix;
+    var hasZeroElement = false;
+    for (var i = 0; i < augmentedResult.rows(); i += 1) {
+      if (augmentedResult.e(i, i).equals(Expression.ZERO)) {
+        hasZeroElement = true;
+      }
+    }
+    var html = "";
+    if (!hasZeroElement) {
+      var result2 = Matrix.Zero(matrix.rows(), matrix.rows()).map(function (element, i, j) { // splitting to get the second half
+        return augmentedResult.e(i, j + augmentedResult.rows());
+      });
+      var result = result2.map(function (element, i, j) {
+        return element.divide(augmentedResult.e(i, i));
+      });
+      html += "<div>";
+      html += "<math>";
+      html += new Expression.Exponentiation(new Expression.Matrix(matrix), Expression.ONE.negate()).toMathML(printOptions);
+      if (method === Matrix.GaussMontante) {
+        var c = augmentedResult.e(0, 0);//!
+        html += "<mo>=</mo>";
+        html += new Expression.Multiplication(new Expression.Division(Expression.ONE, c), new Expression.Matrix(result2)).toMathML(printOptions);
+      }
+      html += "<mo>=</mo>";
+      html += new Expression.Matrix(result).toMathML(printOptions);
+      html += "</math>";
+      html += "</div>";
+    } else {
+      //TODO: ?
+    }
+    return html;
+  });
+  return html;
+};
 
 Expression.Details.add({
   type: "inverse-Gauss",
@@ -15049,43 +19000,7 @@ Expression.Details.add({
   },
   priority: 1,
   callback: function (printOptions, matrix) {
-    var html = "";
-    html += "<div>";
-    html += "<math>";
-    html += new Expression.Exponentiation(new Expression.Matrix(matrix), Expression.ONE.negate()).toMathML(printOptions) + "<mo>=</mo><mn>?</mn>";
-    html += "</math>";
-    html += "</div>";
-    html += "<p>" + i18n.inverseDetails.start + "</p>";
-    //TODO: merge (?)
-    var augmented = matrix.augment(Matrix.I(matrix.rows()));
-    html += Expression.rowReductionGaussJordanMontante(augmented, Matrix.GaussJordan, "inverse", Object.assign({}, printOptions, {columnlines: -matrix.cols()}), function (tmp) {
-      var html = "";
-      var augmentedResult = tmp.matrix;
-      var hasZeroElement = false;
-      for (var i = 0; i < augmentedResult.rows(); i += 1) {
-        if (augmentedResult.e(i, i).equals(Expression.ZERO)) {
-          hasZeroElement = true;
-        }
-      }
-      if (!hasZeroElement) {
-        var result = Matrix.Zero(matrix.rows(), matrix.rows()).map(function (element, i, j) { // splitting to get the second half
-          var e = augmentedResult.e(i, i);
-          var x = augmentedResult.e(i, j + augmentedResult.rows());
-          return e.equals(Expression.ONE) ? x : x.divide(e);
-        });
-        html += "<div>";
-        html += "<math>";
-        html += new Expression.Exponentiation(new Expression.Matrix(matrix), Expression.ONE.negate()).toMathML(printOptions);
-        html += "<mo>=</mo>";
-        html += new Expression.Matrix(result).toMathML(printOptions);
-        html += "</math>";
-        html += "</div>";
-      } else {
-        //TODO: ?
-      }
-      return html;
-    });
-    return html;
+    return getInverseDetails(printOptions, matrix, Matrix.GaussJordan, i18n.inverseDetails.start);
   }
 });
 
@@ -15096,49 +19011,8 @@ Expression.Details.add({
   },
   priority: 2,
   callback: function (printOptions, matrix) {
-    var html = "";
-    html += "<div>";
-    html += "<math>";
-    html += new Expression.Exponentiation(new Expression.Matrix(matrix), Expression.ONE.negate()).toMathML(printOptions) + "<mo>=</mo><mn>?</mn>";
-    html += "</math>";
-    html += "</div>";
-    //TODO:
-    //html += "<p>" + i18n.methodOfMontanteDetails.inverseDetails.start + "</p>";
-
-    var augmented = matrix.augment(Matrix.I(matrix.rows()));
-    html += Expression.rowReductionGaussJordanMontante(augmented, Matrix.GaussMontante, "inverse", Object.assign({}, printOptions, {columnlines: -matrix.cols()}), function (tmp) {
-      var augmentedResult = tmp.matrix;
-      var hasZeroElement = false;
-      for (var i = 0; i < augmentedResult.rows(); i += 1) {
-        if (augmentedResult.e(i, i).equals(Expression.ZERO)) {
-          hasZeroElement = true;
-        }
-      }
-      var html = "";
-      if (!hasZeroElement) {
-        var c = augmentedResult.e(0, 0);//!
-        var result2 = Matrix.Zero(matrix.rows(), matrix.rows()).map(function (element, i, j) { // splitting to get the second half
-          return augmentedResult.e(i, j + augmentedResult.rows());
-        });
-        var result = result2.map(function (element, i, j) {
-          return element.divide(c);
-        });
-        html += "<div>";
-        html += "<math>";
-        html += new Expression.Exponentiation(new Expression.Matrix(matrix), Expression.ONE.negate()).toMathML(printOptions);
-        html += "<mo>=</mo>";
-        html += new Expression.Multiplication(new Expression.Division(Expression.ONE, c), new Expression.Matrix(result2)).toMathML(printOptions);
-        html += "<mo>=</mo>";
-        html += new Expression.Matrix(result).toMathML(printOptions);
-        html += "</math>";
-        html += "</div>";
-      } else {
-        //TODO: ?
-      }
-      return html;
-    });
-
-    return html;
+    // TODO: i18n.methodOfMontanteDetails.inverseDetails.start
+    return getInverseDetails(printOptions, matrix, Matrix.GaussMontante, undefined);
   }
 });
 
@@ -15158,10 +19032,24 @@ Expression.Details.add({
     html += "</math>";
     html += "</div>";
 
-    html += "<div class=\"details-container\"><details open=\"open\"><summary>" + i18n.summaryLabel + " (" + i18n.index.LUDecomposition + ")" + "</summary><div class=\"indented\">";
+    var detailsHTML = RPN.createDetailsSummary(printOptions.idPrefix, [{type: 'steps-to-find-LU-decomposition', matrix: matrix.toString(), second: undefined}]);
+
+    return html + detailsHTML;
+  }
+});
+
+Expression.Details.add({
+  type: "steps-to-find-LU-decomposition",
+  i18n: function () {
+    return i18n.index.LUDecomposition;
+  },
+  priority: 1,
+  callback: function (printOptions, matrix) {
+    var palu = Expression.LUDecomposition(matrix);
+    var html = "";
 
     //TODO: fix
-    html += Expression.rowReductionGaussJordanMontante(matrix, Matrix.Gauss, "", Object.assign({}, printOptions, {isLUDecomposition: true}), function (result) {
+    html += Expression.rowReductionGaussJordanMontante(matrix, Matrix.Gauss, "LU-decomposition", Object.assign({}, printOptions, {isLUDecomposition: true}), function (result) {
       return "";
     });
 
@@ -15176,8 +19064,6 @@ Expression.Details.add({
     html += "</math>";
     html += "</div>";
 
-    html += "</div></details></div>";
-
     return html;
   }
 });
@@ -15186,30 +19072,96 @@ Expression.Details.add({
   type: "Gaussian-elimination",
   minRows: 2,
   callback: function (printOptions, matrix) {
-    var html = Expression.rowReductionGaussJordanMontante(matrix, Matrix.Gauss, "", printOptions, function (tmp) {
+    var c = 0;
+    var html = "";
+    Matrix.toRowEchelonWithCallback(matrix, Matrix.Gauss, "row-reduction", null, function (result) {
+      c += 1;
+      var condition = result.condition;
+      var matrix = result.matrix;
+      if (!condition.isTrue()) {
+        html += "<li>";
+        html += "<div class=\"like-table\">";
+      }
+      html += "<math>";
+      html += new Expression.Matrix(matrix).toMathML(printOptions);
+      html += "<mo>~</mo>";
+      html += new Expression.Matrix(matrix).toMathML(printOptions);
+      html += "</math>";
+      if (!condition.isTrue()) {
+        html += "<math>";
+        html += "<mrow><mo>(</mo>";
+        html += condition.toMathML(printOptions);
+        html += "<mo>)</mo></mrow>";
+        html += "</math>";
+        html += "</div>";
+        html += "</li>";
+      }
+    });
+    if (c > 1) {
+      html = "<ul class=\"list-unstyled\">" + html + "</ul>";
+    }
+    var detailsHTML = RPN.createDetailsSummary(printOptions.idPrefix, [{type: 'steps-to-find-row-echelon-matrix', matrix: matrix.toString(), second: undefined}]);
+    return html + detailsHTML;
+  }
+});
+
+Expression.Details.add({
+  type: "steps-to-find-row-echelon-matrix",
+  minRows: 2,
+  callback: function (printOptions, matrix) {
+    var html = Expression.rowReductionGaussJordanMontante(matrix, Matrix.Gauss, "row-reduction", printOptions, function (tmp) {
       //var result = tmp.matrix;
+      if (tmp.condition.isTrue() && tmp.matrix.eql(matrix)) {
+        return i18n.theMatrixIsInRowEchelonForm;
+      }
       return "";
     });
     return html;
   }
 });
 
-}());
-
-/*global console, Expression, Matrix, i18n, NonSimplifiedExpression*/
-
+})();
 (function () {
 "use strict";
+/*global i18n*/
+
+
+
+//TODO:
+//TODO:
 
 //TODO: i18n.index.CholeskyDecomposition
 
 Expression.Details.add({
   type: "Cholesky-decomposition",
+  minRows: 2,
+  callback: function (printOptions, matrix) {
+    var detailsHTML = RPN.createDetailsSummary(printOptions.idPrefix, [{type: 'steps-to-find-Cholesky-decomposition', matrix: matrix.toString(), second: undefined}]);
+    var tmp = Expression.CholeskyDecomposition(matrix);
+    var LL = tmp.L;
+    var A = matrix;
+    var html = "";
+    html += "<div class=\"math-block\">";
+    html += "<math>";
+    html += Expression.p("A=L*T", {
+      A: new Expression.Matrix(A),
+      L: new Expression.Matrix(LL),
+      T: new Expression.Matrix(LL.transpose())
+    }, printOptions);
+    html += "</math>";
+    html += "</div>";
+    return html + detailsHTML;
+  }
+});
+
+Expression.Details.add({
+  type: "steps-to-find-Cholesky-decomposition",
   i18n: function () {
     return i18n.CholeskyDecomposition;
   },
   priority: 1,
   callback: function (printOptions, matrix) {
+    //TODO: better details when a lot of zeros - ?
     var A = matrix;
 
     // check if A is square
@@ -15236,7 +19188,7 @@ Expression.Details.add({
       html += "<div>";
       html += "<math>";
       //TODO: highlight e(i, j), e(j, i) - ?
-      html += Expression.p("A", null, printOptions) + (symmetric ? "<mo>=</mo>" : "<mo>&ne;</mo>") + Expression.p("A^T", null, printOptions);
+      html += Expression.p("A=A^T").replace(/<mo>=<\/mo>/g, symmetric ? '<mo>=</mo>' : '<mo>&ne;</mo>');
       html += "</math>";
       html += "<span>";
       html += " - ";
@@ -15261,8 +19213,6 @@ Expression.Details.add({
     //var tmp = Expression.CholeskyDecomposition(matrix);
     //var L = tmp.L.matrix;
 
-    html += "<div class=\"details-container\"><details open=\"open\"><summary>" + i18n.summaryLabel + " (" + i18n.CholeskyDecomposition + ")" + "</summary><div class=\"indented\">";
-
     // The matrix is symmetric
     html += onSymmetricChecking(true);
 
@@ -15273,14 +19223,13 @@ Expression.Details.add({
 
     html += "<div>";
     html += "<math>";
-    html += Expression.p("A=L*L^T", null, printOptions);
+    html += Expression.p("A=L*L^T");
     html += "</math>";
     html += " ";
     html += i18n.CholeskyDecompositionLink;
     html += "</div>";
 
     html += "<div>";
-    html += "<math>";
 
     var M = nsL.multiply(nsL.transpose());
 
@@ -15295,12 +19244,13 @@ Expression.Details.add({
       return new NonSimplifiedExpression(e);
     });
 
-    html += Expression.p("A=L*T", {
+    html += "<math>";
+    html += Expression.p("A=L*T=M", {
       A: new Expression.Matrix(nsA),
       L: new Expression.Matrix(nsL),
-      T: new Expression.Matrix(nsL.transpose())
+      T: new Expression.Matrix(nsL.transpose()),
+      M: new Expression.Matrix(M)
     }, printOptions);
-    html += "<mo>=</mo>" + Expression.p("M", {M: new Expression.Matrix(M)}, printOptions);
     html += "</math>";
     html += "</div>";
 
@@ -15316,7 +19266,7 @@ Expression.Details.add({
       }
     }
 
-    var highlights = "";
+    html += '<ul class="list-unstyled">'; //?
     for (var j = 0; j < n; j += 1) {
       for (var i = j; i < n; i += 1) {
         var nsE = null;
@@ -15352,18 +19302,19 @@ Expression.Details.add({
           nsE = (nsSum == null ? nsA.e(i, j) : nsA.e(i, j).subtract(nsSum)).divide(nsL.e(j, j));
           e = (sum == null ? nsA.e(i, j) : nsA.e(i, j).subtract(sum)).divide(L[j][j]);
         }
-        html += "<div>";
+        html += "<li>";
         html += "<math>";
         var x = new NonSimplifiedExpression(M.e(i, j).unwrap());
         var y = new NonSimplifiedExpression(nsA.e(i, j).unwrap());
-        html += Expression.p("x=y", {
-          x: x,
-          y: y
-        }, printOptions);
+        html += '<mrow>';
+        html += x.toMathML(printOptions) + '<mo>=</mo>' + y.toMathML(printOptions);
+        html += '</mrow>';
+        var highlights = "";
         highlights += "<a class=\"a-highlight\" data-for=\"" + x.getId() + "\" data-highlight=\"" + M.e(i, j).getIds() + "\"></a>";
         highlights += "<a class=\"a-highlight\" data-for=\"" + y.getId() + "\" data-highlight=\"" + nsA.e(i, j).getIds() + "\"></a>";
 
-        html += "<mpadded width=\"+0.8em\" lspace=\"+0.4em\"><mo>&rArr;</mo></mpadded>";
+        html += '<mo lspace="0.68em" rspace="0.68em" stretchy="false">&rArr;</mo>';
+        html += '<mrow>';
         html += nsL.e(i, j).toMathML(printOptions);
         html += "<mo>=</mo>";
         html += nsE.toMathML(printOptions); // before substitutions
@@ -15394,8 +19345,8 @@ Expression.Details.add({
             html += " - ";
             html += !ok ? i18n.sorryCannotWork : i18n.theMatrixIsNotPositiveDefinite;
             html += "</span>";
-            html += "</div>";
-            html += "</div></details></div>";
+            html += "</li>";
+            html += '</ul>';
             return html;
           }
         }
@@ -15403,14 +19354,16 @@ Expression.Details.add({
         //TODO: subs
         html += "<mo>=</mo>";
         html += r.toMathML(printOptions); // after simplification
+        html += '</mrow>';
         html += "</math>";
         html += highlights;
-        html += "</div>";
+        html += "</li>";
 
         L[i][j] = new NonSimplifiedExpression(r);
       }
     }
-
+    html += '</ul>';
+    
     var LL = Matrix.padRows(L, null);
 
     html += "<div>";
@@ -15422,155 +19375,15 @@ Expression.Details.add({
     html += "</math>";
     html += "</div>";
 
-    html += "</div></details></div>";
-
-    var t = html;
-    html = "";
-
-    html += "<div class=\"math-block\">";
-    html += "<math>";
-    html += Expression.p("A=L*T", {
-      A: new Expression.Matrix(A),
-      L: new Expression.Matrix(LL),
-      T: new Expression.Matrix(LL.transpose()),
-    }, printOptions);
-    html += "</math>";
-    html += "</div>";
-
-    return html + t;
+    return html;
   }
 });
 
-}());
-
-/*global window, document */
-
-(function (global) {
-  // Frédéric Wang - https://github.com/fred-wang/mathml.css/blob/master/mspace.js
-  /* This Source Code Form is subject to the terms of the Mozilla Public
-   * License, v. 2.0. If a copy of the MPL was not distributed with this
-   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-   /*global document, Node*/
-  "use strict";
-
-  // layout work (?)
-  var getMathMLSupport = function (tmp) {
-    var table = "<mtable><mtr><mtd><mn>1</mn></mtd><mtd><mn>2</mn></mtd><mtd><mn>3</mn></mtd><mtd><mn>4</mn></mtd></mtr></mtable>";
-    var table2 = table.replace(/<\/mtd><mtd>/g, "</mtd></mtr><mtr><mtd>");
-    var table3 = table.replace(/<mtable>/g, "<mtable columnspacing=\"0em\">");
-    var table4 = table.replace(/<mtable>/g, "<mtable columnlines=\"none solid none\">");
-    var table5 = table.replace(/<mn>1<\/mn>/g, "<mpadded width=\"+0.8em\" lspace=\"+0.4em\"><mn>1</mn></mpadded>");
-    var table6 = table.replace(/<mn>1<\/mn>/g, "<menclose notation=\"circle\"><mn>1</mn></menclose>");
-    var table7 = table2.replace(/<mtable>/g, "<mtable rowspacing=\"0ex\">");
-    var lspaceRspaceText = "<mrow><mi>x</mi><mo lspace=\"0em\" rspace=\"0em\">&#x2062;</mo><mi>y</mi></mrow>" +
-                           "<mrow><mi>x</mi><mo lspace=\"1em\" rspace=\"1em\">&#x2062;</mo><mi>y</mi></mrow>";
-    var msupMsubTest = "<msup><mrow><mtable><mtr><mtd><mn>1</mn></mtd></mtr><mtr><mtd><mn>2</mn></mtd></mtr></mtable></mrow><mrow><mn>2</mn></mrow></msup>" +
-                       "<msup><mrow><mtable><mtr><mtd><mn>1</mn></mtd></mtr><mtr><mtd><mn>2</mn></mtd></mtr><mtr><mtd><mn>3</mn></mtd></mtr></mtable></mrow><mrow><mn>2</mn></mrow></msup>";
-    tmp.innerHTML = "<math>" + table + table2 + table3 + table4 + table5 + table6 + table7 + lspaceRspaceText + msupMsubTest + "</math>";
-    var t = tmp.firstElementChild.firstElementChild;
-    var t2 = t.nextElementSibling;
-    var t3 = t2.nextElementSibling;
-    var t4 = t3.nextElementSibling;
-    var t5 = t4.nextElementSibling;
-    var t6 = t5.nextElementSibling;
-    var t7 = t6.nextElementSibling;
-    var t8 = t7.nextElementSibling;
-    var t9 = t8.nextElementSibling;
-    var t10 = t9.nextElementSibling;
-    var t11 = t10.nextElementSibling;
-    var math = t.getBoundingClientRect().width > t2.getBoundingClientRect().width;
-    var columnspacing = t.getBoundingClientRect().width > t3.getBoundingClientRect().width;
-    var columnlines = t.getBoundingClientRect().width < t4.getBoundingClientRect().width;
-    var mpadded = t.getBoundingClientRect().width < t5.getBoundingClientRect().width;
-    var menclose = t.getBoundingClientRect().width + t.getBoundingClientRect().height < t6.getBoundingClientRect().width + t6.getBoundingClientRect().height;
-    var rowspacing = t2.getBoundingClientRect().height > t7.getBoundingClientRect().height;
-    var lspaceRspace = t9.getBoundingClientRect().width > t8.getBoundingClientRect().width;
-    var msupMsub = t11.lastElementChild.getBoundingClientRect().top < t10.lastElementChild.getBoundingClientRect().top;
-    return (math ? "" : "no-math ") +
-           (columnspacing ? "" : "no-columnspacing ") +
-           (mpadded ? "" : "no-mpadded ") +
-           (columnlines ? "" : "no-columnlines ") +
-           (menclose ? "" : "no-menclose ") +
-           (rowspacing ? "" : "no-rowspacing ") +
-           (lspaceRspace ? "" : "no-lspace-rspace ") +
-           (msupMsub ? "" : "no-msup-msub ");
-  };
-
-  document.addEventListener("DOMContentLoaded", function (event) {
-    if (window.opera != undefined) {
-      document.body.classList.toggle("css-profile", true);
-      document.body.classList.toggle("no-draggable", true);
-    }
-
-    var tmp = document.createElement("div");
-    tmp.style.position = "absolute";
-    tmp.style.zIndex = "-1";
-    tmp.style.clip = "rect(0 0 0 0)";
-    tmp.style.whiteSpace = "nowrap";
-    tmp.style.width = "0px";
-    tmp.style.height = "0px";
-    tmp.style.overflow = "hidden";
-    document.body.appendChild(tmp);
-    tmp.innerHTML = "<math><mrow mathcolor=\"#FF0000\"><mn>1</mn></mrow></math>";
-    var ok = window.getComputedStyle(tmp.firstElementChild.firstElementChild, undefined).color.indexOf("255") !== -1;
-    var c = ok ? getMathMLSupport(tmp) : "math ";
-    document.body.removeChild(tmp);
-    if (c !== "") {
-      var classes = c.replace(/^\s+|\s+$/g, "").split(" ");
-      for (var i = 0; i < classes.length; i += 1) {
-        document.body.classList.toggle(classes[i], true);
-      }
-    }
-    // I want to have focusable and draggable element, menclose[href="#"] can be used, but I need to prevent the navigation.
-    if (ok || window.opera != undefined) {
-      // Opera supports MathML links too with some special CSS
-      var preventNavigation = function (event) {
-        if (event.button === 0 || event.button === 1) {
-          var target = event.target;
-          while (target != undefined && (target.nodeType !== Node.ELEMENT_NODE || target.getAttribute("href") == undefined)) {
-            target = target.parentNode;
-          }
-          if (target != undefined && target.getAttribute("href") === "#") {
-            var tagName = target.tagName.toUpperCase();
-            if (tagName === "MROW" || tagName === "MTD" || tagName === "MENCLOSE") {
-              event.preventDefault();
-            }
-          }
-        }
-      };
-      document.addEventListener("click", preventNavigation, false);
-      document.addEventListener("auxclick", preventNavigation, false);
-    }
-  }, false);
-
-}(this));
-
-
-if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
-  (function () {
-    "use strict";
-    var timeoutId = 0;
-    document.addEventListener("keydown", function (event) {
-      var DOM_VK_ALT = 18;
-      if (event.keyCode === DOM_VK_ALT) {
-        if (timeoutId !== 0) {
-          window.clearTimeout(timeoutId);
-        } else {
-          document.body.classList.toggle("altKey", true);
-        }
-        timeoutId = window.setTimeout(function () {
-          timeoutId = 0;
-          document.body.classList.toggle("altKey", false);
-        }, 600);
-      }
-    }, false);
-  }());
-}
-
+})();
 /*jslint plusplus: true, vars: true, indent: 2 */
-/*global document */
+/*global document, window */
 
-(function (global) {
+(function () {
   "use strict";
 
   function PageUtils() {
@@ -15613,7 +19426,7 @@ if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
               var callback = initializers[className];
               if (callback != undefined) {
                 if (t > 0) {
-                  throw new Error(classList.toString());
+                  throw new TypeError(classList.toString());
                 }
                 t += 1;
                 callback(element);
@@ -15624,6 +19437,8 @@ if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
       }
     }
   };
+  
+  var supportsAnimations = 'animation' in document.documentElement.style;
 
   var checkCustomPaint = function (element) {
     if (element.getAttribute("data-custom-paint") != undefined) {
@@ -15634,6 +19449,16 @@ if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
         element.dispatchEvent(event);
       }
     }
+    //!
+    if (!supportsAnimations) {
+      var tagName = element.tagName.toLowerCase();
+      if (tagName === 'mo' || tagName === 'mtable' || tagName === 'mi') {
+        var event = document.createEvent('Event');
+        event.initEvent('animationstart', true, false);
+        element.dispatchEvent(event);
+      }
+    }
+    //!
   };
 
   var checkSubtree = function (element) {
@@ -15651,7 +19476,7 @@ if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
   PageUtils.initialize = function (selector, callback) {
     var className = selector.slice(1);
     if (started || initializers[className] != undefined) {
-      throw new Error(className);
+      throw new TypeError(className);
     }
     initializers[className] = callback;
   };
@@ -15666,12 +19491,16 @@ if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
 
   document.addEventListener("DOMContentLoaded", function (event) {
     //TODO: remove
-    if (document.getElementsByTagName("template").length === 0 && window.location.protocol === 'http:' && Object.keys != null && Object.keys(initializers).length !== 0) {
+    var scriptVersion = '?20191021T205438Z';
+    var htmlVersion = document.documentElement.getAttribute('data-version-tag');
+    if ((document.body.getElementsByTagName("template").length === 0 || scriptVersion !== htmlVersion) && (window.location.protocol === 'http:' || window.location.protocol === 'https:') && Object.keys != null && Object.keys(initializers).length !== 0 && window.fetch != null) {
       // a workaround for a caching bug in browsers
       // https://bugs.chromium.org/p/chromium/issues/detail?id=899752 - ?
       // Chrome/70
       // also there are some another error in Firefox, seems
-      fetch("https://" + window.location.hostname + (window.location.port !== '' ? ':' + window.location.port : '') + window.location.pathname).then(function (response) {
+      // Chrome - only for http: protocol, seems
+      // Firefox - any protocol - ? (https:)
+      fetch("https://" + window.location.hostname + (window.location.port !== '' ? ':' + window.location.port : '') + window.location.pathname, {cache: "no-cache"}).then(function (response) {
         return response.text();
       }).then(function (text) {
         var parser = new DOMParser();
@@ -15694,13 +19523,13 @@ if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
   };
 
   //Note: `Utils` is not a good name (somehow web clients may already have a variable with that name)
-  global.PageUtils = PageUtils;
+  globalThis.PageUtils = PageUtils;
 
-}(this));
+}());
 
 /*global document, window */
 
-(function (global) {
+(function () {
   "use strict";
 
   function Dialog() {
@@ -15852,7 +19681,9 @@ if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
 
   Dialog.create = function () {
     var dialog = document.createElement("dialog");
-    dialog.initDialog();
+    if (dialog.initDialog != null) {
+      dialog.initDialog();
+    }
     dialog.nativeShowModal = dialog.showModal;
     //dialog.nativeShow = dialog.show;
     dialog.show = Dialog.prototype.show;
@@ -15935,13 +19766,13 @@ if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
   //  return dialog;
   //};
 
-  global.Dialog = Dialog;
+  globalThis.Dialog = Dialog;
   
-}(this));
+}());
 
 /*global document, Dialog */
 
-(function (global) {
+(function () {
   "use strict";
 
   var oldHighlights = undefined;
@@ -15970,10 +19801,7 @@ if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
     }
   };
 
-  var tooltip = Dialog.create();
-  tooltip.id = "highlight-tooltip";
-  tooltip.setAttribute("role", "tooltip");
-  tooltip.classList.toggle("tooltip-dialog", true);
+  var tooltip = null;
 
   var keyDownTarget = undefined;
 
@@ -15990,6 +19818,12 @@ if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
       keyDownTarget.removeEventListener("keydown", onKeyDown, false);
       keyDownTarget.removeAttribute("aria-describedby");
       keyDownTarget = undefined;
+    }
+    if (tooltip == null) {
+      tooltip = Dialog.create();
+      tooltip.id = "highlight-tooltip";
+      tooltip.setAttribute("role", "tooltip");
+      tooltip.classList.toggle("tooltip-dialog", true);
     }
     if (tooltip.getAttribute("open") != undefined) {
       tooltip.close();
@@ -16026,11 +19860,13 @@ if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
       //!
       // The idea is to set tabindex="0" only for cells which have a tooltip or a "highlight"
       x.setAttribute("tabindex", "0");
-      var tagName = x.tagName.toUpperCase();
-      if (tagName === "MROW" || tagName === "MTD" || tagName === "MENCLOSE") {
-        x.setAttribute("href", "#");
+      var tagName = x.tagName.toLowerCase();
+      if (tagName === 'mrow' || tagName === 'mtd') {
+        if (x.tabIndex == null) {
+          x.setAttribute("href", "#");
+        }
       } else {
-        if (tagName !== "A") {
+        if (tagName !== 'a') {
           throw new RangeError(tagName);
         }
       }
@@ -16060,10 +19896,10 @@ if ("webkitUserDrag" in document.documentElement.style) {//? Chrome, Safari
 
   };
 
-  global.initializeAHighlight = f(highlight);
-  global.initializeATooltip = f(showTooltip);
+  globalThis.initializeAHighlight = f(highlight);
+  globalThis.initializeATooltip = f(showTooltip);
 
-}(this));
+}());
 
 /*global window, document, Dialog*/
 
@@ -16134,9 +19970,9 @@ window.reportValidity = function (input, validationMessage) {
 
 };
 
-/*global document, JSON*/
+/*global document*/
 
-(function (global) {
+(function () {
   "use strict";
 
   function CustomMenclose() {
@@ -16164,11 +20000,11 @@ window.reportValidity = function (input, validationMessage) {
     var rows = [];
     var c = table.firstElementChild;
     while (c != undefined) {
-      if (c.tagName.toUpperCase() === "MTR") {
+      if (c.tagName.toLowerCase() === 'mtr') {
         var row = [];
         var t = c.firstElementChild;
         while (t != undefined) {
-          if (t.tagName.toUpperCase() === "MTD") {
+          if (t.tagName.toLowerCase() === 'mtd') {
             row.push(t);
           }
           t = t.nextElementSibling;
@@ -16193,20 +20029,21 @@ window.reportValidity = function (input, validationMessage) {
     }
   }, false);
 
-}(this));
+}());
 
 /*global window, document, console*/
 
 //TODO: optimize
 
-(function (global) {
+(function () {
   "use strict";
 
 var initializeAInput = function (container) {
   var input = container.firstElementChild;
-  if (input.tagName.toUpperCase() !== "INPUT" && input.tagName.toUpperCase() !== "TEXTAREA") {
-    throw new Error();
+  if (input.tagName.toLowerCase() !== 'input' && input.tagName.toLowerCase() !== 'textarea') {
+    throw new TypeError();
   }
+  var idPrefix = input.id + '=';
 
   // see https://github.com/kueblc/LDT
 
@@ -16215,6 +20052,7 @@ var initializeAInput = function (container) {
   // FF does not like font
   var fontSize = inputStyle.fontSize;
   var fontFamily = inputStyle.fontFamily;
+  var fontWeight = inputStyle.fontWeight;
   var lineHeight = inputStyle.lineHeight;
   var textAlign = inputStyle.textAlign;
 
@@ -16229,7 +20067,8 @@ var initializeAInput = function (container) {
 
   // when the width of a textarea is small, paddingRight will not be included in scrolling area,
   // but this is not true for an input, in Firefox - for both
-  if (input.tagName.toUpperCase() === "INPUT") {
+  // see https://developer.mozilla.org/en-US/docs/Mozilla/Gecko/Chrome/CSS/overflow-clip-box
+  if (input.tagName.toLowerCase() === "input") {
     // Firefox, Edge, Chrome
     marginLeft += paddingLeft;
     marginTop += paddingTop;
@@ -16245,10 +20084,10 @@ var initializeAInput = function (container) {
     }
   }
 
-  var isActive = false;
   var backgroundElement = document.createElement("div");
   backgroundElement.style.fontSize = fontSize;
   backgroundElement.style.fontFamily = fontFamily;
+  backgroundElement.style.fontWeight = fontWeight;
   backgroundElement.style.lineHeight = lineHeight;
   backgroundElement.style.textAlign = textAlign;
   backgroundElement.style.paddingLeft = paddingLeft + "px";
@@ -16259,23 +20098,25 @@ var initializeAInput = function (container) {
     container.insertBefore(backgroundElement, input);
   }, 0);
 
-  var add = function (text, color, backgroundColor, div) {
-    var t = color === "transparent" ? text.replace(/[^\r\n\t]/g, " ") : text;
-    var span = document.createElement("span");
-    var style = span.style;
-    style.color = color;
-    style.backgroundColor = backgroundColor;
-    if (color !== "transparent") {
-      if ("webkitTextStroke" in style) {
-        style.webkitTextStroke = "2.5px";
-      } else if ("textShadow" in style) {
-        style.textShadow = "-1px -1px 1px, 1px -1px 1px, -1px 1px 1px, 1px 1px 1px";
-      } else {
-        //TODO: Uncaught TypeError: Cannot set property 'textDecoration' of undefined
-        style.textDecoration = "underline";
+  var updateTokenNode = function (span, text, tokenClassName, className) {
+    var classList = span.classList;
+    for (var i = 0; i < classList.length; i += 1) {
+      if (classList[i] !== tokenClassName && classList[i] !== className) {
+        classList.toggle(classList[i], false);
       }
     }
-    span.appendChild(document.createTextNode(t));
+    if (tokenClassName != null) {
+      span.classList.toggle(tokenClassName, true);
+    }
+    if (className != null) {
+      span.classList.toggle(className, true);
+    }
+    span.textContent = text;
+  };
+  
+  var add = function (text, tokenClassName, className, div) {
+    var span = document.createElement("span");
+    updateTokenNode(span, text, tokenClassName, className);
     div.appendChild(span);
   };
 
@@ -16318,12 +20159,12 @@ var initializeAInput = function (container) {
       i -= step;
       if (depth === 0) {
         return {
-          first: {start: selectionStart, end: selectionStart + 1, color: "lightgray", backgroundColor: "transparent"}, //"antiquewhite"
-          second: {start: i, end: i + 1, color: "lightgray", backgroundColor: "transparent"} //"antiquewhite"
+          first: {start: selectionStart, end: selectionStart + 1, className: "bracket-mark"},
+          second: {start: i, end: i + 1, className: "bracket-mark"}
         };
       } else {
         return {
-          first: {start: selectionStart, end: selectionStart + 1, color: "lightpink", backgroundColor: "transparent"},
+          first: {start: selectionStart, end: selectionStart + 1, className: "odd-bracket-mark"},
           second: undefined
         };
       }
@@ -16334,81 +20175,145 @@ var initializeAInput = function (container) {
     };
   };
 
+  var updateMargins = function () {
+    var clientLeft = input.clientLeft;
+    var clientTop = input.clientTop;
+    var inputRect = input.getBoundingClientRect();
+    var clientRight = inputRect.right - inputRect.left - input.clientWidth - input.clientLeft;
+    var clientBottom = inputRect.bottom - inputRect.top - input.clientHeight - input.clientTop;
+
+    backgroundElement.style.marginLeft = (clientLeft + marginLeft).toString() + "px";
+    backgroundElement.style.marginTop = (clientTop + marginTop).toString() + "px";
+    backgroundElement.style.marginRight = (clientRight + marginRight).toString() + "px";
+    backgroundElement.style.marginBottom = (clientBottom + marginBottom).toString() + "px";
+  };
+
+  var updateLine = function (line, marks, lineNode) {
+    //lineNode.textContent = '';
+    var tokenNode = lineNode.firstElementChild;
+    var tokenizer = new Tokenizer(line, 0, null);
+    var token = null;
+    var position = 0;
+    while ((token = tokenizer.next()).type !== 'EOF') {
+      var className = null;
+      for (var i = 0; i < marks.length; i += 1) {
+        var m = marks[i];
+        if (m.start >= position && m.end <= position + token.value.length) {
+          className = m.className;
+        }
+      }
+      if (tokenNode == null) {
+        tokenNode = document.createElement('span');
+        lineNode.appendChild(tokenNode);
+      }
+      //TODO: move ?
+      var type = token.type === 'symbol' && /^pi|[eiEIU]$/.test(token.value) ? 'special-symbol' : token.type;
+      updateTokenNode(tokenNode, token.value, type, className);
+      position += token.value.length;
+      tokenNode = tokenNode.nextElementSibling;
+    }
+    while (tokenNode != null) {
+      var next = tokenNode.nextElementSibling;
+      tokenNode.parentNode.removeChild(tokenNode);
+      tokenNode = next;
+    }
+    //TODO: EOF?
+
+/*
+    var start = 0;
+    var end = line.length;
+    
+    for (var i = 0; i < marks.length; i += 1) {
+      var m = marks[i];
+      var s = m.start > start ? m.start : start;
+      var e = m.end < end ? m.end : end;
+      if (s < e) {
+        add(line.slice(start, s), null, null, lineNode);
+        add(line.slice(s, e), null, m.className, lineNode);
+        start = e;
+      }
+    }
+    if (start < end) {
+      add(line.slice(start, end), null, null, lineNode);
+      start = end;
+    }
+*/
+    if (input.getAttribute("list") != undefined && textAlign !== 'center') {
+      add("  ", null, null, lineNode); // to increase scrollWidth in Chrome
+    }
+  };
+  
+  var map = {};
+  var idCounter = -1;
+
   var update = function (event) {
     var marks = [];
-    if (isActive) {
-      var tmp0 = getBracketMarks(input.value, input.selectionStart);
-      if (tmp0.first != undefined) {
-        marks.push(tmp0.first);
-      }
-      if (tmp0.second != undefined) {
-        marks.push(tmp0.second);
-      }
+    var tmp0 = getBracketMarks(input.value, input.selectionStart);
+    if (tmp0.first != undefined) {
+      marks.push(tmp0.first);
     }
-
+    if (tmp0.second != undefined) {
+      marks.push(tmp0.second);
+    }
     var error = input.getAttribute("data-error");
     if (error != undefined) {
-      var errorStartEnd = error.split(",");
-      marks.push({start: Number.parseInt(errorStartEnd[0], 10), end: Number.parseInt(errorStartEnd[1], 10), color: "transparent", backgroundColor: "lightpink"});
+      marks.push({start: Number.parseInt(error.split(",")[0], 10), end: Number.parseInt(error.split(",")[1], 10), className: "error-mark"});
     }
+    marks.sort(function (a, b) {
+      return a.start < b.start ? -1 : (b.start < a.start ? +1 : 0);
+    });
 
-    if (marks.length !== 0) {
+      backgroundElement.setAttribute('dir', input.getAttribute('dir') || 'ltr');
       var scrollLeft = input.scrollLeft;
       var scrollTop = input.scrollTop;
-      var clientLeft = input.clientLeft;
-      var clientTop = input.clientTop;
-      var inputRect = input.getBoundingClientRect();
-      var clientRight = inputRect.right - inputRect.left - input.clientWidth - input.clientLeft;
-      var clientBottom = inputRect.bottom - inputRect.top - input.clientHeight - input.clientTop;
-
-      marks.sort(function (a, b) {
-        return a.start < b.start ? -1 : (b.start < a.start ? +1 : 0);
-      });
-
-      while (backgroundElement.firstChild != undefined) {
-        backgroundElement.removeChild(backgroundElement.firstChild);
-      }
-
-      backgroundElement.style.marginLeft = (clientLeft + marginLeft).toString() + "px";
-      backgroundElement.style.marginTop = (clientTop + marginTop).toString() + "px";
-      backgroundElement.style.marginRight = (clientRight + marginRight).toString() + "px";
-      backgroundElement.style.marginBottom = (clientBottom + marginBottom).toString() + "px";
+      updateMargins();
 
       var value = input.value;
+      var lines = value.split('\n');
       var start = 0;
-      while (start < value.length) {
-        var div = document.createElement("div");
-        backgroundElement.appendChild(div);
-        var end = value.indexOf("\n", start) + 1;
-        if (end === 0) {
-          end = value.length;
+      var node = backgroundElement.firstElementChild;
+      for (var j = 0; j < lines.length; j += 1) {
+        if (node == null) {
+          node = document.createElement("div");
+          node.id = idPrefix + (++idCounter);
+          map[node.id] = {line: null, lineMarks: null};
+          backgroundElement.appendChild(node);
         }
+        var div = node;
+        var line = lines[j];
+        var lineMarks = [];
         for (var i = 0; i < marks.length; i += 1) {
           var m = marks[i];
-          var s = m.start > start ? m.start : start;
-          var e = m.end < end ? m.end : end;
+          var s = Math.max(m.start - start, 0);
+          var e = Math.min(m.end - start, line.length + '\n'.length);
           if (s < e) {
-            add(value.slice(start, s), "transparent", "transparent", div);
-            add(value.slice(s, e), m.color, m.backgroundColor, div);
-            start = e;
+            lineMarks.push({start: s, end: e, className: m.className});
           }
         }
-        if (start < end) {
-          add(value.slice(start, end), "transparent", "transparent", div);
-          start = end;
+        var data = map[div.id];
+        if (line !== data.line || JSON.stringify(lineMarks) !== JSON.stringify(data.lineMarks)) {
+          //Note: empty lines are collapsed
+          //Note: extra whitespace/newline may work not well with text-align inequal to 'start'
+          updateLine(line || ' ', lineMarks, div);
+          data.line = line;
+          data.lineMarks = lineMarks;
         }
-        if (input.getAttribute("list") != undefined) {
-          add("  ", "transparent", "transparent", div); // to increase scrollWidth in Chrome
-        }
+        start += line.length + '\n'.length;
+        node = node.nextElementSibling;
       }
+      while (node != undefined) {
+        var next = node.nextElementSibling;
+        delete map[node.id];
+        backgroundElement.removeChild(node);
+        node = next;
+      }
+
       backgroundElement.scrollLeft = scrollLeft;
       backgroundElement.scrollTop = scrollTop;
+  };
 
-    } else {
-      while (backgroundElement.firstChild != undefined) {
-        backgroundElement.removeChild(backgroundElement.firstChild);
-      }
-    }
+  var updateMarks = function () {
+    update(undefined);
   };
 
   var oldSelectionStart = -1;
@@ -16420,25 +20325,35 @@ var initializeAInput = function (container) {
         var newSelectionStart = input.selectionStart;
         if (oldSelectionStart !== newSelectionStart) {
           oldSelectionStart = newSelectionStart;
-          update(undefined);
+          updateMarks();
         }
       }, 0);
     }
   };
   // https://github.com/w3c/selection-api/issues/53
   // selectionchange
+  input.addEventListener("selectionchange", checkSelectionChange, false);
+
   input.addEventListener("keydown", checkSelectionChange, false);
   input.addEventListener("mousedown", checkSelectionChange, false);
   input.addEventListener("mouseup", checkSelectionChange, false);
+  input.addEventListener("mousemove", checkSelectionChange, false);
+  input.addEventListener("touchmove", checkSelectionChange, false);
+  input.addEventListener("input", checkSelectionChange, false);
+  input.addEventListener("focus", checkSelectionChange, false);
+  input.addEventListener("blur", checkSelectionChange, false);
+  input.addEventListener("wheel", checkSelectionChange, false); // Shift + mousewheel
+  input.addEventListener("dragover", checkSelectionChange, false); // https://stackoverflow.com/questions/27713057/event-to-detect-when-the-text-in-an-input-is-scrolled
 
   input.addEventListener("input", update, false);
-  input.addEventListener("update-attribute", update, false);
+  input.addEventListener("update-attribute", function (event) {
+    updateMarks();
+  }, false);
   var timeoutId2 = 0;
   var onScroll = function (event) {
     if (timeoutId2 === 0) {
       timeoutId2 = window.setTimeout(function () {
         timeoutId2 = 0;
-        //update(undefined);
         var scrollLeft = input.scrollLeft;
         var scrollTop = input.scrollTop;
         backgroundElement.scrollLeft = scrollLeft;
@@ -16447,27 +20362,50 @@ var initializeAInput = function (container) {
     }
   };
   input.addEventListener("scroll", onScroll, false);
-  var onFocus = function (event) {
-    isActive = true;
-    update(undefined);
-  };
-  var onBlur = function (event) {
-    isActive = false;
-    update(undefined);
-  };
-  input.addEventListener("focus", onFocus, false);
-  input.addEventListener("blur", onBlur, false);
+
+  if (input.tagName.toLowerCase() === 'input') {
+  // as the "scroll" event is not supported on Chrome
+  input.addEventListener("keydown", onScroll, false);
+  input.addEventListener("mousedown", onScroll, false);
+  input.addEventListener("mouseup", onScroll, false);
+  input.addEventListener("mousemove", onScroll, false);
+  input.addEventListener("touchmove", onScroll, false);
+  input.addEventListener("input", onScroll, false);
+  input.addEventListener("focus", onScroll, false);
+  input.addEventListener("blur", onScroll, false);
+  input.addEventListener("wheel", onScroll, false); // Shift + mousewheel
+  input.addEventListener("dragover", onScroll, false); // https://stackoverflow.com/questions/27713057/event-to-detect-when-the-text-in-an-input-is-scrolled
+  }
+
+  container.classList.toggle('focus-within', document.activeElement === input);
+  input.addEventListener("focus", function (event) {
+    container.classList.toggle('focus-within', true);
+  }, false);
+  input.addEventListener("blur", function (event) {
+    container.classList.toggle('focus-within', false);
+  }, false);
+
+  update(undefined);
 };
 
 window.initializeAInput = initializeAInput;
 
-}(this));
+  // document.hasFocus is not a function in Opera Mini
+  document.documentElement.classList.toggle('focus-within', document.hasFocus != null ? document.hasFocus() : true);
+  window.addEventListener("focus", function (event) {
+    document.documentElement.classList.toggle('focus-within', true);
+  }, false);
+  window.addEventListener("blur", function (event) {
+    document.documentElement.classList.toggle('focus-within', false);
+  }, false);
 
-/*global window, document, unescape, hit, createDetailsSummary, ExpressionParser, ActHistoryItem*/
+}());
+
+/*global window, document, unescape, hit, Node */
 
 // deprecated
 
-(function (global) {
+(function () {
 "use strict";
 
 function ItemsStorage(keyStorage, itemUpdater) {
@@ -16613,13 +20551,113 @@ ItemsStorage.updateItem = function (data, idIfNotSet) {
       hit({bc: "resultMatrix"});//!
     }
   }
+  
+  if (data.resultMatrix === '') {
+    var tmp = /onclick\="\(new Matrix\('str',\d+,(\d+)(?:,\d+)?,([\-0-9\/',]+)\)\).print\('a'\);">/.exec(data.resultHTML);
+    if (tmp != null) {
+      var colsNumber = Number.parseInt(tmp[1], 10);
+      var rows = [];
+      var x = tmp[2].replace(/'/g, '').split(',');
+      while (x.length !== 0) {
+        rows.push('{' + x.slice(0, colsNumber).join(',') + '}');
+        x = x.slice(colsNumber);
+      }
+      data.resultMatrix = '{' + rows.join(',') + '}';
+    }
+  }
 
-  if (oldVersion < ActHistoryItem.version) {
+  if (true) {
+    var removeInsertButtons = function (e) {
+      var spans = e.querySelectorAll('span');
+      for (var i = 0; i < spans.length; i += 1) {
+        if (spans[i].style != null && spans[i].style.cssFloat === 'right') {
+          spans[i].parentNode.removeChild(spans[i]);
+        }
+      }
+    };
+    var removeCustomMath = function (e) {
+      var elements = e.querySelectorAll('custom-math');
+      for (var i = 0; i < elements.length; i += 1) {
+        var x = elements[i];
+        var math = document.createElement('math');
+        math.innerHTML = x.innerHTML;
+        x.parentNode.replaceChild(math, x);
+      }
+    };
+    var removeMathClass = function (e) {
+      var elements = e.querySelectorAll('.math');
+      for (var i = 0; i < elements.length; i += 1) {
+        var x = elements[i];
+        if (x.firstChild === x.lastChild && x.firstElementChild != null && x.firstElementChild.tagName.toLowerCase() === 'math') {
+          x.parentNode.replaceChild(x.firstChild, x);
+        } else {
+          while (x.firstChild != null) {
+            x.parentNode.insertBefore(x.firstChild, x);
+          }
+          x.parentNode.removeChild(x);
+        }
+      }
+
+      var es = e.querySelectorAll('span');
+      for (var i = 0; i < es.length; i += 1) {
+        var x = es[i];
+        while (x != null && x.tagName.toLowerCase() !== 'math') {
+          x = x.parentNode;
+        }
+        if (x != null) {
+          while (x.firstChild != null) {
+            x.parentNode.insertBefore(x.firstChild, x);
+          }
+          x.parentNode.removeChild(x);
+        }
+      }
+
+      // add <math></math>
+      var visit = function (x) {
+        if (x.nodeType === Node.ELEMENT_NODE && x.tagName.toLowerCase().slice(0, 1) === 'm') {
+          if (x.tagName.toLowerCase() !== 'math') {
+            if (x.previousSibling != null && x.previousSibling.nodeType === Node.ELEMENT_NODE && x.previousElementSibling.tagName.toLowerCase() === 'math') {
+              x.previousElementSibling.appendChild(x);
+            } else {
+              var math = document.createElement('math');
+              x.parentNode.replaceChild(math, x);
+              math.appendChild(x);
+            }
+          }
+        } else {
+          var c = x.firstChild;
+          while (c != null) {
+            var next = c.nextSibling;
+            visit(c);
+            c = next;
+          }
+        }
+      };
+      visit(e);
+    };
+    var removeExtraMrows = function (e) {
+      var es = e.querySelectorAll('mrow');
+      for (var i = 0; i < es.length; i += 1) {
+        var x = es[i];
+        if (x.firstChild === x.lastChild && x.firstChild != null && x.attributes.length === 0) {
+          x.parentNode.replaceChild(x.firstChild, x);
+        }
+      }
+    };
+    var addRowspacing = function (e) {
+      var es = e.querySelectorAll('mtable');
+      for (var i = 0; i < es.length; i += 1) {
+        var x = es[i];
+        if (x.getAttribute('rowspacing') == null) {
+          x.setAttribute('rowspacing', '0ex');
+        }
+      }
+    };
     var addMROWs = function (e) {
       var c = e.firstElementChild;
       while (c != undefined) {
         var next = c.nextElementSibling;
-        if (c.tagName.toUpperCase() !== "MROW") {
+        if (c.tagName.toLowerCase() !== 'mrow') {
           hit({bc: "msub+msup"});//!
           var mrow = document.createElement("mrow");
           e.insertBefore(mrow, c);
@@ -16633,7 +20671,7 @@ ItemsStorage.updateItem = function (data, idIfNotSet) {
       var elements = e.querySelectorAll(".summary");
       for (var i = 0; i < elements.length; i += 1) {
         var oldSummary = elements[i];
-        if (oldSummary != undefined && oldSummary.tagName.toUpperCase() !== "SUMMARY") { // backward compatibility
+        if (oldSummary != undefined && oldSummary.tagName.toLowerCase() !== "summary") { // backward compatibility
           hit({bc: ".summary"});//!
           var newSummary = document.createElement("summary");
           while (oldSummary.firstChild != undefined) {
@@ -16646,7 +20684,7 @@ ItemsStorage.updateItem = function (data, idIfNotSet) {
     };
     var fixMSUBAndMSUP = function (node) {
       // MFENCED - ?
-      if (" MFRAC MSQRT MROOT MSUB MSUP MUNDER ".indexOf(" " + node.tagName.toUpperCase() + " ") !== -1) {
+      if (" mfrac msqrt mroot msub msup munder ".indexOf(" " + node.tagName.toLowerCase() + " ") !== -1) {
         addMROWs(node);
       }
       var c = node.firstElementChild;
@@ -16702,16 +20740,17 @@ ItemsStorage.updateItem = function (data, idIfNotSet) {
       for (var i = 0; i < elements.length; i += 1) {
         var element = elements[i];
         var matrix = element.querySelector(".matrix-menu-show");
+        element.removeAttribute('class');//!
         if (matrix != undefined) { // old version
           hit({bc: "matrix-container"});//!
-          matrix = matrix.getAttribute("data-matrix");
+          matrix = matrix.getAttribute("data-matrix") || element.getAttribute("data-matrix");
           if (matrix != undefined) { // Uncaught TypeError: Cannot read property 'replace' of null - https://matrixcalc.org/es/
             if (matrix.indexOf(";") !== -1 || matrix.indexOf("\t") !== -1) {
               matrix = "{{" + matrix.replace(/\s*;\s*/g, "},{").replace(/\t/g, ",").replace(/\x20/g, "") + "}}";
             }
             var columnlines = undefined;
             var useBraces = undefined;
-            if (element.firstElementChild.tagName.toUpperCase() === "MFENCED") {
+            if (element.firstElementChild.tagName.toLowerCase() === 'mfenced') {
               columnlines = element.firstElementChild.firstElementChild.getAttribute("columnlines");
               if (columnlines != undefined) {
                 columnlines = -1;//TODO:
@@ -16724,7 +20763,7 @@ ItemsStorage.updateItem = function (data, idIfNotSet) {
               useBraces = ["{", " "];
             }
             var tmp = document.createElement("div");
-            tmp.innerHTML = ExpressionParser.parse(matrix, new ExpressionParser.Context()).toMathML({
+            tmp.innerHTML = RPNProxy.toMathML(matrix, {
               columnlines: columnlines,
               useBraces: useBraces
             });
@@ -16743,7 +20782,7 @@ ItemsStorage.updateItem = function (data, idIfNotSet) {
           hit({bc: "top"});//!
           var base = element.previousElementSibling;
           var tmp = document.createElement("div");
-          tmp.innerHTML = "<msup><mrow></mrow><mrow>" + ExpressionParser.parse(element.innerHTML, new ExpressionParser.Context()).toMathML({}) + "</mrow></msup>";
+          tmp.innerHTML = "<msup><mrow></mrow><mrow>" + RPNProxy.toMathML(element.innerHTML, {}) + "</mrow></msup>";
           base.parentNode.removeChild(base);
           tmp.firstElementChild.firstElementChild.appendChild(base);
           element.parentNode.insertBefore(tmp.firstElementChild, element);
@@ -16753,7 +20792,7 @@ ItemsStorage.updateItem = function (data, idIfNotSet) {
     };
     var fixDivMath = function (e) { // <= 7
       var x = e.firstElementChild;
-      if (x != undefined && x.tagName.toUpperCase() === "DIV" && x.classList.contains("math")) {
+      if (x != undefined && x.tagName.toLowerCase() === 'div' && x.classList.contains('math')) {
         //x.style.display = "inline-block";
         x.setAttribute("style", "display: inline-block;");
       }
@@ -16764,14 +20803,37 @@ ItemsStorage.updateItem = function (data, idIfNotSet) {
       for (var i = 0; i < elements.length; i += 1) {
         var element = elements[i];
         var span = element.nextElementSibling;
-        if (span != undefined && span.tagName.toUpperCase() === "SPAN" && span.style.display === "none") {
+        var matrix = '';
+        if (span != undefined && span.tagName.toLowerCase() === 'span' && span.style.display === 'none') {
+          matrix = "{{" + span.innerHTML.replace(/\s*;\s*/g, "},{").replace(/\t/g, ",").replace(/\x20/g, "") + "}}";
+          span.parentNode.removeChild(span);
+        } else {
+          var matrix = '';
+          matrix += '{';
+          var tbody = element.firstElementChild;
+          for (var row = tbody.firstElementChild; row != null; row = row.nextElementSibling) {
+            matrix += '{';
+            for (var cell = row.firstElementChild; cell != null; cell = cell.nextElementSibling) {
+              if (cell.getAttribute('rowspan') == null) {
+                var t = cell.querySelector('table');
+                if (t != null) {
+                  var x = t.firstElementChild.firstElementChild.textContent + '/' + t.firstElementChild.lastElementChild.textContent;
+                  t.innerHTML = x;
+                }
+                matrix += cell.textContent;//TODO:
+                matrix += cell.nextElementSibling != null && cell.nextElementSibling.getAttribute('rowspan') == null ? ',' : '';
+              }
+            }
+            matrix += '}';
+            matrix += row.nextElementSibling != null ? ',' : '';
+          }
+          matrix += '}';
+        }
+        if (matrix !== '') {
           hit({bc: "inTable"});//!
           var tmp = document.createElement("div");
-          var matrix = span.innerHTML;
-          matrix = "{{" + matrix.replace(/\s*;\s*/g, "},{").replace(/\t/g, ",").replace(/\x20/g, "") + "}}";
           var isDeterminant = element.querySelector(".matrix-img-line") != undefined;
-          tmp.innerHTML = ExpressionParser.parse(isDeterminant ? "determinant(" + matrix + ")" : matrix, new ExpressionParser.Context()).toMathML({});
-          span.parentNode.removeChild(span);
+          tmp.innerHTML = RPNProxy.toMathML(isDeterminant ? "determinant(" + matrix + ")" : matrix, {});
           element.parentNode.insertBefore(tmp.firstElementChild, element);
           element.parentNode.removeChild(element);
         }
@@ -16788,15 +20850,14 @@ ItemsStorage.updateItem = function (data, idIfNotSet) {
       }
     };
     var fixMencloseInMenclose = function (e) {
-      var elements = e.querySelectorAll("menclose[notation=none]");
-      for (var i = 0; i < elements.length; i += 1) {
-        var element = elements[i];
-        var mtable = element.querySelector("mtable");
-        if (mtable != null && mtable.firstElementChild != null && mtable.firstElementChild === mtable.lastElementChild && mtable.firstElementChild.firstElementChild === mtable.firstElementChild.lastElementChild) {
-          var es = mtable.querySelectorAll("menclose[notation=none]");
-          for (var j = 0; j < es.length; j += 1) {
-            var e = es[j];
-            if (e.querySelector("mtable") != undefined) {
+      if (e.querySelector('math') == null) {//!
+        var elements = e.querySelectorAll("menclose[notation=none]");
+        for (var i = 0; i < elements.length; i += 1) {
+          var element = elements[i];
+          var mtable = element.querySelector("mtable");
+          if (mtable != null && mtable.firstElementChild != null && mtable.firstElementChild === mtable.lastElementChild && mtable.firstElementChild.firstElementChild === mtable.firstElementChild.lastElementChild) {
+            var e = mtable.querySelector("menclose[notation=none]");
+            if (e != null && e.querySelector("mtable") != undefined && element.getAttribute('data-matrix') === '{{' + e.getAttribute('data-matrix') + '}}') {
               hit({bc: "menclose-menclose"});
               element.parentNode.insertBefore(e, element);
               element.parentNode.removeChild(element);
@@ -16805,14 +20866,83 @@ ItemsStorage.updateItem = function (data, idIfNotSet) {
         }
       }
     };
+    var replaceMfenced = function (e) {
+      var es = e.querySelectorAll('mfenced');
+      for (var i = 0; i < es.length; i += 1) {
+        var e = es[i];
+        var open = e.getAttribute('open') || '(';
+        var mo1 = document.createElement('mo');
+        mo1.textContent = open;
+        var close = e.getAttribute('close') || ')';
+        var mo2 = document.createElement('mo');
+        mo2.textContent = close;
+        var t = document.createElement('mrow');
+        t.appendChild(mo1);
+        while (e.firstChild != null) {
+          t.appendChild(e.firstChild);
+        }
+        t.appendChild(mo2);
+        e.parentNode.insertBefore(t, e);
+        e.parentNode.removeChild(e);
+      }
+    };
+    var fixClassPivot = function (e) {
+      var es = e.querySelectorAll('.pivot');
+      for (var i = 0; i < es.length; i += 1) {
+        var x = es[i];
+        if (x.tagName.toLowerCase() === 'mtd') {
+          x.removeAttribute('class');
+          var tmp = document.createElement('menclose');
+          tmp.setAttribute('notation', 'circle');
+          while (x.firstChild != null) {
+            tmp.appendChild(x.firstChild);
+          }
+          x.appendChild(tmp);
+        }
+      }
+    };
+    var fixMoMo = function (html) {
+      //TODO: counter
+      return html.replace(/<mo>\+<mo>/g, "<mo>+</mo>");
+    };
+    var fixDiagonalizeSteps = function (html) {
+      return html.replace(/diagonalize-steps/g, "steps-to-diagonalize");
+    };
+    var removeHref = function (tmp) {
+      var es = tmp.querySelectorAll('[href="#"]');
+      for (var i = 0; i < es.length; i += 1) {
+        es[i].removeAttribute('href');
+      }
+    };
+    var removeMatrixMenuShowNew = function (tmp) {
+      var es = tmp.querySelectorAll('.matrix-menu-show-new');
+      for (var i = 0; i < es.length; i += 1) {
+        es[i].classList.toggle('matrix-menu-show', true);
+        es[i].classList.toggle('matrix-menu-show-new', false);
+        if (es[i].textContent === '☰') {
+          es[i].textContent = '';
+        }
+      }
+    };
+    var removeDataX = function (tmp) {
+      var es = tmp.querySelectorAll('[data-x="TODO"]');
+      for (var i = 0; i < es.length; i += 1) {
+        es[i].removeAttribute('data-x');
+      }
+    };
     var fixHTML = function (html) {
       if (html == undefined) {
         return html;
       }
       var tmp = document.createElement("div");
+      html = fixMoMo(html);
+      if (oldVersion <= 15) {
+      html = fixDiagonalizeSteps(html);
+      }
       tmp.innerHTML = html;
-      if (oldVersion <= 10) {
-        try {
+      try {
+        if (oldVersion <= 15) {
+          removeInsertButtons(tmp);
           fixMSUBAndMSUP(tmp);
           fixSummary(tmp);
           fixDetails(tmp);
@@ -16824,10 +20954,24 @@ ItemsStorage.updateItem = function (data, idIfNotSet) {
           fixDivMath(tmp);
           fixArrowWithLabel(tmp);
           fixMencloseInMenclose(tmp);
-        } catch (error) {
-          //TODO: fix
-          window.onerror("fixHTML(" + error.toString() + "): " + html, error.fileName || "", error.lineNumber || 0, error.columnNumber || 0, error);
+          removeCustomMath(tmp);
+          removeMathClass(tmp);
+          removeExtraMrows(tmp);
+          addRowspacing(tmp);
+          replaceMfenced(tmp);
+          fixClassPivot(tmp);
         }
+        if (oldVersion <= 16) {
+          removeHref(tmp);
+          removeMatrixMenuShowNew(tmp);
+          removeDataX(tmp);
+        }
+      } catch (error) {
+        //TODO: fix
+        console.error(error);
+        window.setTimeout(function () {
+          throw new TypeError("fixHTML(" + error.toString() + "): " + html);
+        }, 0);
       }
       return tmp.innerHTML;
     };
@@ -16848,19 +20992,19 @@ ItemsStorage.updateItem = function (data, idIfNotSet) {
       if (details != undefined && details.length !== 0) {
         hit({bc: "createDetailsSummary"});
         //TODO: async
-        data.detailsHTML = createDetailsSummary("i" + data.actHistoryId, details, details.length === 1 ? 100 : 1);
+        data.detailsHTML = RPNProxy.createDetailsSummary("i" + data.actHistoryId, details, details.length === 1 ? 100 : 1);
       }
     }
   }
   return data;
 };
 
-global.ItemsStorage = ItemsStorage;
+globalThis.ItemsStorage = ItemsStorage;
 
-}(this));
+}());
 /*global window, console*/
 
-(function (global) {
+(function () {
 "use strict";
 
 function IDBItemsStorage(fallbackItemsStorage) {
@@ -16916,8 +21060,19 @@ IDBItemsStorage.prototype._ = function (operation, item, key, callback) {
     tmp[operation] = {ok: errorName, duration: roundValue(Date.now() - start, 100 - 1), valueLength: roundValue(length(value), 1000 - 1)};
     hit({idb: tmp});
   };
-  var indexedDB = window.indexedDB;
-  if (indexedDB != undefined &&
+  var indexedDB = undefined;
+  var wasError = false;
+  try {
+    indexedDB = window.indexedDB;
+  } catch (error) {
+    wasError = true;
+    // "Cookies blocking in Firefox" - https://github.com/Modernizr/Modernizr/issues/1825#issuecomment-171087703
+    onEvent("access", error.name, undefined);
+    console.log(error);
+    useFallback();
+  }
+  if (!wasError &&
+      indexedDB != undefined &&
       window.IDBObjectStore != undefined &&
       window.IDBObjectStore.prototype != undefined &&
       window.IDBObjectStore.prototype.getAll != undefined &&
@@ -17046,7 +21201,7 @@ IDBItemsStorage.prototype._ = function (operation, item, key, callback) {
         }
       };
     }
-  } else {
+  } else if (!wasError) {
     onEvent("access", "No indexedDB", undefined);
     console.log("No indexedDB");
     useFallback();
@@ -17065,21 +21220,31 @@ IDBItemsStorage.prototype.clear = function () {
   this._("clear", undefined, undefined, undefined);
 };
 
-global.IDBItemsStorage = IDBItemsStorage;
-}(this));
+globalThis.IDBItemsStorage = IDBItemsStorage;
+}());
 
-/*global RPN, ExpressionParser*/
+/*global RPN*/
 
-(function (global) {
+(function () {
 "use strict";
 
 function RPNProxy() {
 }
 
-RPNProxy.input = "";
-RPNProxy.startPosition = 0;
-RPNProxy.endPosition = 0;
-RPNProxy.p = 0;
+RPNProxy.getPositionInfo = function () {
+  //TODO: async
+  return RPN.getPositionInfo();
+};
+RPNProxy.toMathML = function (matrix, options) {
+  //TODO: async
+  var result = RPN.toMathML(matrix, options);
+  return result;
+};
+RPNProxy.createDetailsSummary = function (idPrefix, details, bestMethodsLimit) {
+  //TODO: async
+  var result = RPN.createDetailsSummary(idPrefix, details, bestMethodsLimit);
+  return result;
+};
 RPNProxy.getMatrix = function (string, callback) {
   var result = RPN.getMatrix(string);
   callback(result);
@@ -17093,10 +21258,6 @@ RPNProxy.checkExpressions = function (textareaValue, type, callback, errorCallba
     var result = RPN.checkExpressions(textareaValue, type);
     callback(result);
   } catch (error) {
-    RPNProxy.input = ExpressionParser.input;
-    RPNProxy.startPosition = ExpressionParser.startPosition;
-    RPNProxy.endPosition = ExpressionParser.endPosition;
-    RPNProxy.p = RPN.p;
     errorCallback(error);
   }
 };
@@ -17105,39 +21266,24 @@ RPNProxy.checkExpression = function (input, callback, errorCallback) {
     var result = RPN.checkExpression(input);
     callback(result);
   } catch (error) {
-    RPNProxy.input = ExpressionParser.input;
-    RPNProxy.startPosition = ExpressionParser.startPosition;
-    RPNProxy.endPosition = ExpressionParser.endPosition;
-    RPNProxy.p = RPN.p;
     errorCallback(error);
   }
 };
 RPNProxy.runExpression = function (input, kInputValue, kInputId, matrixTableStates, printOptions, callback) {
   var result = RPN.runExpression(input, kInputValue, kInputId, matrixTableStates, printOptions);
-  RPNProxy.input = ExpressionParser.input;
-  RPNProxy.startPosition = ExpressionParser.startPosition;
-  RPNProxy.endPosition = ExpressionParser.endPosition;
-  RPNProxy.p = RPN.p;
   callback(result);
 };
-RPNProxy.getDetails = function (array, printOptions, callback, errorCallback) {
-  try {
-    var result = RPN.getDetails(array, printOptions);
-    callback(result);
-  } catch (error) {
-    RPNProxy.input = ExpressionParser.input;
-    RPNProxy.startPosition = ExpressionParser.startPosition;
-    RPNProxy.endPosition = ExpressionParser.endPosition;
-    RPNProxy.p = RPN.p;
-    errorCallback(error);
-  }
+RPNProxy.getDetails = function (data, printOptions, callback) {
+  var result = RPN.getDetails(data, printOptions);
+  callback(result);
 };
 
-global.RPNProxy = RPNProxy;
-}(this));
+globalThis.RPNProxy = RPNProxy;
+}());
+
 /*global ItemsStorage */
 
-(function (global) {
+(function () {
 "use strict";
 
 function ActHistoryItem(data, idIfNotSet) {
@@ -17155,7 +21301,7 @@ function ActHistoryItem(data, idIfNotSet) {
   this.version = ActHistoryItem.version;
 }
 
-ActHistoryItem.version = 11;
+ActHistoryItem.version = 17;
 
 function ActHistoryStorage(itemsStorage) {
   this.itemsStorage = itemsStorage;
@@ -17170,6 +21316,9 @@ ActHistoryStorage.prototype.load = function (callback) {
     for (var i = 0; i < items.length; i += 1) {
       var key = keys[i];
       var item = items[i];
+      if (item != null && item.version < ActHistoryItem.version) {
+        item = ItemsStorage.updateItem(item);
+      }
       this.actHistory[key] = {item: item, key: key};
       this.actHistoryId = Math.max(this.actHistoryId, key);
     }
@@ -17225,15 +21374,15 @@ ActHistoryStorage.prototype.clear = function () {
   this.actHistory = {};
 };
 
-global.ActHistoryItem = ActHistoryItem;
-global.ActHistoryStorage = ActHistoryStorage; //!
+globalThis.ActHistoryItem = ActHistoryItem;
+globalThis.ActHistoryStorage = ActHistoryStorage; //!
 
-}(this));
+}());
 
 /*jslint plusplus: true, vars: true, indent: 2, white: true */
-/*global window, document, console, Node, Image, Element, Dialog, JSON, Ya, PageUtils, reportValidity, XMLHttpRequest, initializeAInput, initializeAHighlight, initializeATooltip, MathMLToSVG, ItemsStorage, IDBItemsStorage, RPNProxy, i18n, ActHistoryItem, getMatrixPresentationsFromMatrix, toMultilineString, getTableFromAsciiMathMatrix, ActHistoryStorage, parseMathML, YT*/
+/*global window, document, console, Node, Image, Element, Dialog, Ya, PageUtils, reportValidity, XMLHttpRequest, initializeAInput, initializeAHighlight, initializeATooltip, MathMLToSVG, ItemsStorage, IDBItemsStorage, RPNProxy, i18n, ActHistoryItem, getMatrixPresentationsFromMatrix, toMultilineString, getTableFromAsciiMathMatrix, ActHistoryStorage, parseMathML, YT*/
 
-(function (global) {
+(function () {
 "use strict";
 
 // TODO: implement Dialog.prompt, replace button+input with button+Dialog.prompt
@@ -17245,23 +21394,30 @@ if (window.location.protocol !== "file:" && window.navigator.doNotTrack !== "1")
   }, 256);
 }
 
-var clickOnEnter = function (event) {
-  var DOM_VK_RETURN = 13;
-  if (event.keyCode === DOM_VK_RETURN && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey && !event.defaultPrevented) {
-    if (event.target.tagName.toUpperCase() === "INPUT") {
-      event.preventDefault(); // in case of moving focus to some other element (textarea)
-      this.querySelector("button").click();
-    }
+
+var addClickOnEnter = function (element) {
+  var input = element.querySelector('input');
+  var button = element.querySelector('button');
+  if (!('enterKeyHint' in input)) {
+    input.setAttribute('mozactionhint', 'Enter');//?
   }
+  input.enterKeyHint = 'enter'; //?  it should produce keydown events - https://groups.google.com/a/chromium.org/d/msg/blink-dev/Hfe5xktjSV8/KItGmnG_BAAJ
+  input.addEventListener('keydown', function (event) {
+    var DOM_VK_RETURN = 13;
+    if (event.keyCode === DOM_VK_RETURN && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey && !event.defaultPrevented) {
+      event.preventDefault(); // in case of moving focus to some other element (textarea)
+      button.click();
+    }
+  }, false);
 };
 
 var Utils = PageUtils;
 
 Utils.initialize(".button-after-input", function (element) {
-  element.addEventListener("keydown", clickOnEnter, false);
+  addClickOnEnter(element);
 });
 Utils.initialize(".button-before-input", function (element) {
-  element.addEventListener("keydown", clickOnEnter, false);
+  addClickOnEnter(element);
 });
 
   // ...
@@ -17284,7 +21440,7 @@ var hit = function (params) {
     }
   }
 };
-global.hit = hit;//! see Polynom#getroots
+globalThis.hit = hit;//! see Polynomial#getroots
 
   var postError = function (error, input, initialInput, classList) {
     input = input || undefined;
@@ -17335,9 +21491,9 @@ global.hit = hit;//! see Polynom#getroots
     window.onerror(s, error.fileName || "", error.lineNumber || 0, error.columnNumber || 0, error);
   };
 
-  global.postError = postError;
+  globalThis.postError = postError;
 
-var handleError = function (initialInput, classList, e) {
+    var handleError = function (initialInput, classList, e, positionInfo) {
       //TODO: check
       var message = e.message;
       var i = message.indexOf(":");
@@ -17345,16 +21501,16 @@ var handleError = function (initialInput, classList, e) {
       var errorDetail = i === -1 ? "" : message.slice(i + 1);
 
       if (errorName === "ArithmeticException") {
-        Dialog.alert(getInputErrorHTML(RPNProxy.input, RPNProxy.startPosition, RPNProxy.endPosition, i18n.divisionByZeroError));//?
+        Dialog.alert(getInputErrorHTML(positionInfo, i18n.divisionByZeroError));//?
       } else if (errorName === "IntegerInputError") {
         var integerInput = errorDetail;
-        Dialog.alert(getInputErrorHTML(integerInput, -1, -1, getInputError()));//?
+        Dialog.alert(getInputErrorHTML({input: integerInput, startPosition: -1, endPosition: -1, p: undefined}, getInputError(null)));//?
       } else if (errorName === "NotSupportedError") {
-        Dialog.alert(getInputErrorHTML(RPNProxy.input, RPNProxy.startPosition, RPNProxy.endPosition, i18n.operationIsNotSupported));//?
-        postError(e, RPNProxy.input, initialInput, classList);
+        Dialog.alert(getInputErrorHTML(positionInfo, i18n.operationIsNotSupported));//?
+        postError(e, positionInfo.input, initialInput, classList);
       } else if (errorName === "UserError") {
-        Dialog.alert(getInputErrorHTML(RPNProxy.input, RPNProxy.startPosition, RPNProxy.endPosition, getInputError()));//?
-        postError(e, RPNProxy.input, initialInput, classList);
+        Dialog.alert(getInputErrorHTML(positionInfo, getInputError(e)));//?
+        postError(e, positionInfo.input, initialInput, classList);
       } else if (errorName === "SingularMatrixException") {
         Dialog.alert(i18n.determinantIsEqualToZeroTheMatrixIsSingularNotInvertible);
       } else if (errorName === "MatrixDimensionMismatchException") {
@@ -17364,6 +21520,8 @@ var handleError = function (initialInput, classList, e) {
         Dialog.alert(text);
       } else if (errorName === "NonRealMatrixException") {
         Dialog.alert(i18n.matrixIsNotReal);
+      } else if (errorName === "NonSymmetricMatrixException") {
+        Dialog.alert("<math><mi>A</mi><mo>&ne;</mo><msup><mi>A</mi><mi>T</mi></msup></math>" + " — " + i18n.theMatrixIsNotSymmetric);
       } else if (errorName === "DimensionMismatchException") {
         Dialog.alert(i18n.theNumberOfColumnsInFirstMatrixShouldEqualTheNumberOfRowsInSecond);
       } else if (errorName === "ValueMissingError") {
@@ -17372,35 +21530,48 @@ var handleError = function (initialInput, classList, e) {
         var inputElement = document.getElementById(inputElementId);
         reportValidity(inputElement, i18n.pleaseFillOutThisField);
       } else {
-        Dialog.alert(getInputErrorHTML(RPNProxy.input, RPNProxy.startPosition, RPNProxy.endPosition, getInputError()));//?
-        postError(e, RPNProxy.input, initialInput, classList);
+        Dialog.alert(getInputErrorHTML(positionInfo, getInputError(null)));//?
+        postError(e, positionInfo.input, initialInput, classList);
         window.sendSnapshot();
-        //throw new Error(message);
+        //throw new TypeError(message);
         console.log(e);
       }
-};
+    };
 
 //!
 var decimalFractionDigits = -1;
 
 /* #matrix-menu-dialog */
 
+var getMatrixMenuShow = function (matrixContainer) {
+  return matrixContainer.parentNode.querySelector(".matrix-menu-show") || matrixContainer.parentNode.parentNode.querySelector(".matrix-menu-show");
+};
+
 var showDialog = function (matrixMenu, content) {
   var anchorPoint = {
     left: Number.parseFloat(matrixMenu.getAttribute("data-left")),
     top: Number.parseFloat(matrixMenu.getAttribute("data-top"))
   };
+  //!
+  // as MathML elements are not focusable, move the focus to the button (Firefox + contextmenu)
+  var matrixContainer = document.getElementById(matrixMenu.getAttribute("data-for-matrix"));
+  if (document.activeElement === matrixContainer && document.activeElement.focus == null) {
+    var focusNode = getMatrixMenuShow(matrixContainer);
+    focusNode.focus();
+  }
+  //!
   var dialog = Dialog.standard(undefined, [[anchorPoint.left, anchorPoint.top], [0.5, 0.5]], content, "<button autofocus=\"autofocus\" type=\"submit\">" + i18n.close + "</button>");
   dialog.setAttribute("dir", "ltr");
   var input = dialog.querySelector("input") || dialog.querySelector("textarea") || dialog.querySelector("img");
-  if (input.tagName.toUpperCase() !== "IMG") {
+  if (input.tagName.toLowerCase() !== 'img') {
     input.select();
   }
   input.focus();
 };
 
-var onShowMathMLOrText = function (matrixMenu, type, singleline) {
+var onShowMathMLOrTextOrLaTex = function (menuitem, type, singleline) {
   hit({click: "show-text-" + type});
+  var matrixMenu = menuitem.parentNode;
   var matrixContainer = document.getElementById(matrixMenu.getAttribute("data-for-matrix"));
   var presentations = getMatrixPresentationsFromMatrix(matrixContainer, matrixContainer.getAttribute("data-matrix"));
   var value = presentations[type];
@@ -17409,18 +21580,15 @@ var onShowMathMLOrText = function (matrixMenu, type, singleline) {
 };
 
 var onShowMathML = function (event) {
-  var matrixMenu = this.parentNode;
-  onShowMathMLOrText(matrixMenu, "application/mathml-presentation+xml", false);
+  onShowMathMLOrTextOrLaTex(this, "application/mathml-presentation+xml", false);
 };
 
 var onShowText = function (event) {
-  var matrixMenu = this.parentNode;
-  onShowMathMLOrText(matrixMenu, "text/ascii-math", true);
+  onShowMathMLOrTextOrLaTex(this, "text/ascii-math", true);
 };
 
 var onShowLaTeX = function (event) {
-  var matrixMenu = this.parentNode;
-  onShowMathMLOrText(matrixMenu, "application/x-latex", false);
+  onShowMathMLOrTextOrLaTex(this, "application/x-latex", false);
 };
 
 var onShowImage = function (event) {
@@ -17649,7 +21817,7 @@ var onCopyMatrixToClipboard = function (event) {
   var matrixMenu = this.parentNode;
   var matrixContainer = document.getElementById(matrixMenu.getAttribute("data-for-matrix"));
   //var focusNode = matrixContainer;//TODO: fix - cannot focus MathML element
-  var focusNode = matrixContainer.parentNode.parentNode.querySelector(".matrix-menu-show");
+  var focusNode = getMatrixMenuShow(matrixContainer);
   focusNode.focus();
   window.getSelection().collapse(focusNode, 0);
   // The previous line moves the focus to the body in Edge 17
@@ -17659,7 +21827,7 @@ var onCopyMatrixToClipboard = function (event) {
   try {
     document.execCommand("copy");
   } catch (error) {
-    handleError("", "", error);
+    handleError("", "", error, {});
   }
 };
 
@@ -17674,23 +21842,24 @@ Utils.on("click", ".matrix-menu-show", function (event) {
 });
 
 // button
-Utils.on("click", ".language-popup-button", function (event) {
-  var languageMenuDialog = document.getElementById("language-popup");
-  if (languageMenuDialog.getAttribute("data-initialized") == null) {
+Utils.on("click", ".popup-button", function (event) {
+  var menuDialog = document.getElementById(event.target.getAttribute("data-menu"));
+  if (menuDialog.getAttribute("data-initialized") == null) {
     //TODO: fix
-    languageMenuDialog.initDialog();
-    languageMenuDialog.show = Dialog.prototype.show;
-    languageMenuDialog.nativeClose = languageMenuDialog.close;
-    languageMenuDialog.close = Dialog.prototype.close;
+    if (menuDialog.initDialog != null) {
+      menuDialog.initDialog();
+    }
+    menuDialog.show = Dialog.prototype.show;
+    menuDialog.nativeClose = menuDialog.close;
+    menuDialog.close = Dialog.prototype.close;
 
-    initializeMenuDialog(languageMenuDialog, null);
-    languageMenuDialog.setAttribute("data-initialized", "true");
+    initializeMenuDialog(menuDialog, null);
+    menuDialog.setAttribute("data-initialized", "true");
   }
   var rect = this.getBoundingClientRect();
-  languageMenuDialog.show(undefined, [[rect.right, rect.bottom], [1.0, 0.0]]);
-  languageMenuDialog.firstElementChild.focus();//?
+  menuDialog.show(undefined, [[rect.right, rect.bottom], [1.0, 0.0]]);
+  menuDialog.firstElementChild.focus();//?
 });
-
 
 // << Tables >>
 
@@ -17701,11 +21870,36 @@ var MatrixTables = {};
 
 //-----------------!
 
-var getInputError = function () {
+var getInputError = function (error) {
+  if (error != null) {
+    var t = null;
+    var x = ' ';
+    var y = ' ';
+    if (/^UserError\: unexpected end of input, '[\s\S]' expected$/.exec(error.message) != null) {
+      t = i18n.unexpectedEndOfInputYExpected;
+      y = error.message.slice(-11, -10);
+    } else if (/^UserError\: unexpected '[\s\S]', '[\s\S]' expected$/.exec(error.message) != null) {
+      t = i18n.unexpectedXYExpected;
+      x = error.message.slice(-14, -13);
+      y = error.message.slice(-11, -10);
+    } else if (/^UserError\: unexpected '[\s\S]'$/.exec(error.message) != null) {
+      t = i18n.unexpectedX;
+      x = error.message.slice(-2, -1);
+    } else if (/^UserError\: unexpected end of input$/.exec(error.message) != null) {
+      t = i18n.unexpectedEndOfInput;
+    } else {
+      console.error(error.message);
+    }
+    if (t != null && t !== "") {
+      return t.replace(/\$\{x\}/g, "<code>" + x + "</code>").replace(/\$\{y\}/g, "<code>" + y + "</code>");
+    }
+  }
   return i18n.inputError.replace(/\$\{listOfExamples\}/g, i18n.listOfExamples).replace(/\$\{listOfComplexExamples\}/g, i18n.listOfComplexExamples) + i18n.colonSpacing + ":";
 };
 
-  var setInputCustomValidity = function (input, checkedValue, isValid) {
+globalThis.getInputError = getInputError;//TODO: remove
+
+  var setInputCustomValidity = function (input, checkedValue, error) {
     if (input.value === checkedValue) {
       var dataTitle = input.getAttribute("data-title");
       if (dataTitle == undefined) {
@@ -17716,16 +21910,17 @@ var getInputError = function () {
         input.setAttribute("data-title", title);
         dataTitle = title;
       }
-      if (isValid) {
+      if (error == null) {
         if (dataTitle !== "") {
           input.setAttribute("title", dataTitle);
         } else {
           input.removeAttribute("title");
         }
       } else {
-        input.setAttribute("title", getInputError().replace(/<[^>]*>/g, "").replace(/\s*\:/g, ""));
+        input.setAttribute("title", getInputError(error).replace(/<[^>]*>/g, "").replace(/\s*\:/g, ""));
       }
       var e = input.parentNode.classList.contains("a-input") ? input.parentNode : input;
+      var isValid = error == null;
       //e.classList.toggle("invalid", !isValid);
       e.setAttribute("aria-invalid", !isValid ? "true" : "false");
       input.setAttribute("aria-invalid", !isValid ? "true" : "false");
@@ -17733,7 +21928,7 @@ var getInputError = function () {
   };
 
   var getInputValue = function (value, type) {
-    var v = value.replace(/^\s+|\s+$/g, "");
+    var v = value.trim();
     // Users are often trying to input "-"/"+" instead of "-1"/"+1" for SLU
     if ((v === "-" || v === "+") && (type === "system" || type === "polynomial")) {
       return v + "1";
@@ -17744,31 +21939,21 @@ var getInputError = function () {
     return value;
   };
 
-var delayByInput = {};
 
 var checkInput = function (input, type) {
   var inputName = input.name;
   requestIdleCallback(inputName, function () {
-    var start = Date.now();
     var checkedValue = input.value;
     var value = getInputValue(checkedValue, type); // getInputValue
-    var onEnd = function () {
-      var end = Date.now();
-      if (end - start > 300) {
-        hit({checkInput: roundValue(end - start, 1000 - 1)});
-      }
-      delayByInput[inputName] = Math.min(50, end - start);
-    };
     RPNProxy.checkExpression(value, function () {
-      setInputCustomValidity(input, checkedValue, true);
-      onEnd();
+      removeDataErrorAttribute(input);
+      setInputCustomValidity(input, checkedValue, null);
     }, function (error) {
-      updateDataErrorAttribute(input, error);
+      updateDataErrorAttribute(input, error, RPNProxy.getPositionInfo());
       //TODO: other errors
-      setInputCustomValidity(input, checkedValue, false);
-      onEnd();
+      setInputCustomValidity(input, checkedValue, error);
     });
-  }, delayByInput[inputName] || 50);
+  }, 50);
 };
 
 // type: "simple" | "system" | "polynomial"
@@ -17776,15 +21961,13 @@ var checkTextarea = function (textarea, type) {
   requestIdleCallback(textarea.name, function () {
     var textareaValue = textarea.value;
     RPNProxy.checkExpressions(textareaValue, type, function () {
-      setInputCustomValidity(textarea, textareaValue, true);
+      removeDataErrorAttribute(textarea);
+      setInputCustomValidity(textarea, textareaValue, null);
     }, function (error) {
-      //!hack
-      //if (type !== "system" || textarea.value.indexOf("=") === -1) {
-        updateDataErrorAttribute(textarea, error, RPNProxy.p);//?
-      //}
+      updateDataErrorAttribute(textarea, error, RPNProxy.getPositionInfo(), true);//?
       //TODO:
       console.log(error);
-      setInputCustomValidity(textarea, textareaValue, false);
+      setInputCustomValidity(textarea, textareaValue, error);
     });
   }, 200);
 };
@@ -17825,7 +22008,7 @@ var keyStorage = {
             hit({localStorage: "No error"});
           }
         } else {
-          throw new Error(methodName);
+          throw new TypeError(methodName);
         }
       }
     } catch (error) {
@@ -17839,19 +22022,26 @@ var keyStorage = {
   },
   setItem: function (key, value) {
     if (keyStorage.a("setItem", key, value) != undefined) {
-      throw new Error();
+      throw new TypeError();
     }
   }
 };
 
 var timeoutIds = {};
+var delayByKey = {};
 var requestIdleCallback = function (key, callback, delay) {
   var timeoutId = timeoutIds[key];
   if (timeoutId == undefined || timeoutId === 0) {
     timeoutId = window.setTimeout(function () {
       timeoutIds[key] = 0;
+      var start = Date.now();
       callback();
-    }, delay);
+      var end = Date.now();
+      if (end - start > 300) {
+        hit({checkInput: roundValue(end - start, 1000 - 1)});
+      }
+      delayByKey[key] = Math.max(delay, end - start);
+    }, delayByKey[key] || delay);
     timeoutIds[key] = timeoutId;
   }
 };
@@ -17864,30 +22054,47 @@ function MatrixTable(name, initialRows, initialCols, type, container) {
   this.initRows = initialRows;
   this.initCols = initialCols;
   this.mode = "cells";
-  this.minWidth = type === "system" ? 3.0 : 3.8;
   this.type = type;
   this.container = container;
   this.onmodechange = undefined;
   this.table = [];
-  this.updateTimeoutId = 0;
+  //this.updateTimeoutId = 0;
 
   var textareaName = this.name + "-textarea";
-  var classes = this.type === "polynomial" ? "" : (this.type === "system" ? "matrix-system" : "matrix-with-braces");
   //class=\"matrix\"
   
   var template = document.getElementById("insert-table-template");
   var templateContent = template.content;
-  var st = templateContent.firstElementChild.cloneNode(true);
+  var matrixTableInner = templateContent.firstElementChild.cloneNode(true);
   var st2 = templateContent.firstElementChild.nextElementSibling.cloneNode(true);
-  container.appendChild(st);
+  container.appendChild(matrixTableInner);
   container.appendChild(st2);
 
-  var matrixTableInner = st;
+  matrixTableInner.innerHTML = '<div class="table-container"></div><div class="textarea-container"></div>';
+  var tableTemplate = '<math><mrow><mo>(</mo><mpadded height="+4px" voffset="+2px"><mtable rowspacing="0ex" columnspacing="0em"></mtable></mpadded><mo>)</mo></mrow></math>';
+  var textareaTemplate= '<math><mrow><mo>(</mo><mpadded height="+4px" voffset="+2px"><mi><span class="a-input"><textarea id="TEXTAREA_NAME" name="TEXTAREA_NAME" wrap="off" autocapitalize="off" autocomplete="off" spellcheck="false" class="matrix-table-textarea unfocused-placeholder" placeholder="-2  2 -3&#x0A;-1  1  3&#x0A; 2  0 -1"></textarea></span></mi></mpadded><mo>)</mo></mrow></math>';
+  this.container.querySelector('.table-container').innerHTML = tableTemplate;
+  this.container.querySelector('.textarea-container').innerHTML = textareaTemplate;
+
+  this.tbody = container.querySelector("mtable");
 
   matrixTableInner.setAttribute("data-for", this.name);
   matrixTableInner.classList.toggle("matrix-table-inner", true);
-  if (classes !== "") { // ClassList#toggle doesn't accept an empty string
-    matrixTableInner.classList.toggle(classes, true);
+  if (this.type === 'polynomial') {
+    var mrow1 = matrixTableInner.querySelector('.table-container').querySelector('mrow');
+    mrow1.removeChild(mrow1.firstElementChild);
+    mrow1.removeChild(mrow1.lastElementChild);
+    var mrow2 = matrixTableInner.querySelector('.textarea-container').querySelector('mrow');
+    mrow2.removeChild(mrow2.firstElementChild);
+    mrow2.removeChild(mrow2.lastElementChild);
+  }
+  if (this.type === 'system') {
+    var mrow1 = matrixTableInner.querySelector('.table-container').querySelector('mrow');
+    mrow1.firstElementChild.textContent = '{';
+    mrow1.removeChild(mrow1.lastElementChild);
+    var mrow2 = matrixTableInner.querySelector('.textarea-container').querySelector('mrow');
+    mrow2.firstElementChild.textContent = '{';
+    mrow2.removeChild(mrow2.lastElementChild);
   }
 
   var that = this;
@@ -17942,6 +22149,20 @@ function MatrixTable(name, initialRows, initialCols, type, container) {
   container.setAttribute("data-matrix-table", this.name);
 
   Utils.check(container);
+
+  this.variableNames = undefined;
+
+  this._onKeyDown = function (event) {
+    that.onKeyDown(event);
+  };
+  this._onInput = function (event) {
+    var input = event.target;
+    checkInput(input, that.type);
+    that.update(event);
+  };
+  this._updateVariableNames = function (event) {
+    that.updateVariableNames(event);
+  };
 }
 
 MatrixTable.prototype.getState = function () {
@@ -17949,6 +22170,7 @@ MatrixTable.prototype.getState = function () {
     type: this.type,
     mode: this.mode,
     inputValues: this.getRawInput("cells"),
+    variableNames: this.variableNames,
     textareaValue: this.getRawInput(""),
     rows: this.rows,
     cols: this.cols,
@@ -17963,6 +22185,7 @@ MatrixTable.prototype.getDataState = function () {
     type: this.type,
     mode: this.mode,
     inputValues: this.getRawInput("cells"),
+    variableNames: this.variableNames,
     textareaValue: this.getRawInput(""),
     firstInputElementId: this.getFirstInputElementId()
   };
@@ -17975,6 +22198,7 @@ MatrixTable.prototype.getDataState = function () {
   }
   return state;
 };
+
 
 // private
 MatrixTable.prototype.updateInputWidths = function () {
@@ -18001,17 +22225,17 @@ MatrixTable.prototype.updateInputWidths = function () {
   while (++i < table.length) {
     j = -1;
     while (++j < table[i].length) {
-      var w = 1 + maxLengths[j] * 0.6;
-      var minWidth = this.minWidth;
+      var w = 2 + maxLengths[j];
+      var minWidth = this.type === "system" ? 5 : (6 + 1/3);
       if (w < minWidth) {
         w = minWidth;
       }
-      if (w > 10) {
-        w = 10;
+      if (w > 17) {
+        w = 17;
       }
       var input = table[i][j];
-      input.style.minWidth = minWidth.toString() + "em";
-      input.style.maxWidth = w.toString() + "em";
+      input.style.minWidth = (minWidth * 0.6) + "em";
+      input.style.maxWidth = (w * 0.6) + "em";
 
       //!
       if ((i < expectedRows && j < expectedCols) || (i < expectedRows && this.type === "system" && j === table[i].length - 1)) {
@@ -18025,26 +22249,28 @@ MatrixTable.prototype.updateInputWidths = function () {
       }
       var far = (i > expectedRows || j > expectedCols) && (i > expectedRows || this.type !== "system" || j !== table[i].length - 1);
       input.classList.toggle("far", far);
-      var previousElementSibling = input.parentNode.previousElementSibling;
+      var cellChild = input.parentNode.parentNode.parentNode.parentNode; // <mi></mi>
+      var previousElementSibling = cellChild.previousElementSibling;
       if (previousElementSibling != undefined) {
         previousElementSibling.classList.toggle("far", far);
       }
-      var nextElementSibling = input.parentNode.nextElementSibling;
-      if (nextElementSibling != undefined) {
+      var nextElementSibling = cellChild.nextElementSibling;
+      while (nextElementSibling != null) {
         nextElementSibling.classList.toggle("far", far);
+        nextElementSibling = nextElementSibling.nextElementSibling;
       }
     }
   }
 };
 
 //private
-MatrixTable.prototype.updateTextareaWidth = function () {
+MatrixTable.prototype.updateTextareaHeight = function () {
   var value = this.textarea.value;
   var i = 0;
   var c = 0;
   while (i >= 0) {
     c += 1;
-    i = value.indexOf("\n", i + 1);
+    i = value.indexOf('\n', i + 1);
   }
   var placeholderLines = 3;
   var h = Math.floor(Math.max(placeholderLines + 1, c + 2) * 4 / 3);
@@ -18054,20 +22280,41 @@ MatrixTable.prototype.updateTextareaWidth = function () {
 // private
 MatrixTable.prototype.update = function (event) {
   var that = this;
-  if (this.updateTimeoutId === 0) {
-    this.updateTimeoutId = window.setTimeout(function () {
-      that.updateTimeoutId = 0;
+  //if (this.updateTimeoutId === 0) {
+    //this.updateTimeoutId = window.setTimeout(function () {
+      //that.updateTimeoutId = 0;
       if (that.mode === "cells") {
         that.updateInputWidths();
       } else {
-        that.updateTextareaWidth();
+        that.updateTextareaHeight();
       }
-    }, 9);
+    //}, 0);//9ms -?
+  //}
+};
+
+  //TODO: move somewhere
+MatrixTable.prototype.updateVariableNames = function (event) {
+  var variableName = event.target.getAttribute('data-value');
+  var j = Number.parseInt(event.target.getAttribute('data-index'));
+  this.variableNames[j] = variableName;
+  //TODO: - ?
+  //var t2 = this.getState();
+  //this.insert(t2.inputValues, t2.textareaValue, t2.rows, t2.cols, t2.textareaStyleWidth, t2.textareaStyleHeight, t2.mode, t2.variableNames);
+  //TODO: remove
+  var c = makeContent(variableName);
+  var table = this.tbody;
+  //! should work on <mtable></mtable> (no HTMLTableSectionElement#rows)
+  for (var row = table.firstElementChild.nextElementSibling; row != null; row = row.nextElementSibling) {
+    var cell = row.firstElementChild;
+    for (var i = 0; i < j; i += 1) {
+      cell = cell.nextElementSibling;
+    }
+    cell.lastElementChild.innerHTML = c;
   }
 };
 
 // `inputValues` - array of array of strings (non-square)
-MatrixTable.prototype.insert = function (inputValues, textareaValue, rows, cols, textareaStyleWidth, textareaStyleHeight, mode) {
+MatrixTable.prototype.insert = function (inputValues, textareaValue, rows, cols, textareaStyleWidth, textareaStyleHeight, mode, variableNames) {
   if (inputValues == undefined) {
     inputValues = [];
   }
@@ -18090,12 +22337,8 @@ MatrixTable.prototype.insert = function (inputValues, textareaValue, rows, cols,
     rows = this.initRows;
     cols = this.initCols;
   }
-  if (rows < 1) {
-    rows = 1;
-  }
-  if (cols < 1) {
-    cols = 1;
-  }
+  rows = Math.max(rows, 1);
+  cols = Math.max(cols, 1);
   if (this.type === "polynomial") {
     rows = 1;
     cols = Math.max(cols, 2); // swapmode
@@ -18103,6 +22346,7 @@ MatrixTable.prototype.insert = function (inputValues, textareaValue, rows, cols,
   if (this.type === "system") {
     cols = Math.max(cols, 2);
   }
+  variableNames = variableNames || undefined;
 
   this.rows = rows;
   this.cols = cols;
@@ -18115,60 +22359,78 @@ MatrixTable.prototype.insert = function (inputValues, textareaValue, rows, cols,
     }
   }
 
-  var that = this;
-  var onKeyDown = function (event) {
-    that.onKeyDown(event);
-  };
-  var onInput = function (event) {
-    var input = event.target;
-    checkInput(input, that.type);
-    that.update(event);
-  };
-
   //! autocomplete:
   //! "off" does not allow to use the bfcache, but helps with an input from mobiles
   // <table> ?
   //var inputTitle = "element " + (i + 1).toString() + ", " + (j + 1).toString();
   var inputTemplate = document.createElement("div");
 
-  // no way to input negative numbers on some android devices with inputmode="numeric"
-  var inputMode = /android/i.test(window.navigator.userAgent) ? "decimal" : "numeric";
+  // no way to input negative numbers on some android devices with inputmode="numeric" or inputmode="decimal"
+  // https://bugs.webkit.org/show_bug.cgi?id=197916 - numeric becomes useless in iOS 13
+  var userAgent = window.navigator.userAgent;
+  var inputMode = /android/i.test(userAgent) || !/OS\s+12/.test(userAgent) ? '' : ' inputmode="numeric"';
 
-  inputTemplate.innerHTML = "<span class=\"a-input\">" +
-                            "<input id=\"id\" name=\"name\" type=\"text\" autocapitalize=\"off\" autocomplete=\"off\" spellcheck=\"false\" inputmode=\"" + inputMode + "\" class=\"matrix-table-input unfocused-placeholder\" data-for=\"for\" data-row=\"-1\" data-column=\"-1\" />" +
-                            "</span>";
+  //! to fix an issue in Firefox with an extra height
+  inputTemplate.innerHTML = '<span class="matrix-table-cell">' +
+                            '<span>' +
+                            '<span class="a-input">' +
+                            '<input id="id" name="name" type="text" autocapitalize="off" autocomplete="off" spellcheck="false"' + inputMode + ' class="matrix-table-input unfocused-placeholder" data-for="for" data-row="-1" data-column="-1" />' +
+                            '</span>' +
+                            '</span>' +
+                            '</span>';
+  var name = this.name;
+  var that = this;
+  function makeNewInput(i, j) {
+    var aInput = inputTemplate.firstElementChild.cloneNode(true);
+    var inputName = name + "-" + i + "-" + j;
+    var input = aInput.querySelector("input");
+    input.id = inputName;
+    input.name = inputName;
+    input.setAttribute("data-for", name);
+    input.setAttribute("data-row", i);
+    input.setAttribute("data-column", j);
+    input.addEventListener("keydown", that._onKeyDown, false);
+    input.addEventListener("input", that._onInput, false);
+    return aInput;
+  }
 
+  this.variableNames = variableNames;
+  if (this.type === 'system') {
+    this.variableNames = new Array(this.cols);
+    for (var j = 0; j < this.cols; j += 1) {
+      this.variableNames[j] = variableNames != null && j < variableNames.length ? variableNames[j] : 'x_' + (j + 1);
+    }
+  }
+
+  // Update the table:
   // We are trying to avoid removal of old inputs to support undo/redo and to not loose the focus on "paste":
-  var tbody = this.container.querySelector("table").firstElementChild;
+  var tbody = this.tbody;
+  var MathML = tbody.namespaceURI;
   var row = tbody.firstElementChild;
   for (var i = 0; i < this.rows; i += 1) {
     if (row == null) {
-      row = document.createElement("tr");
+      row = document.createElementNS(MathML, "mtr");
       tbody.appendChild(row);
     }
     var cell = row.firstElementChild;
     for (var j = 0; j < this.cols; j += 1) {
       if (cell == null) {
-        cell = document.createElement("td");
-        cell.classList.toggle("matrix-table-cell", true);
-        var aInput = inputTemplate.firstElementChild.cloneNode(true);
-        var inputName = this.name + "-" + i.toString() + "-" + j.toString();
-        var input = aInput.querySelector("input");
-        input.id = inputName;
-        input.name = inputName;
-        input.setAttribute("data-for", this.name);
-        input.setAttribute("data-row", i.toString());
-        input.setAttribute("data-column", j.toString());
-        input.addEventListener("keydown", onKeyDown, false);
-        input.addEventListener("input", onInput, false);
-        
-        //...
-        if (this.type === "system") {
-          cell.appendChild(document.createElement("span"));
-        }
-        cell.appendChild(aInput);
+        cell = document.createElementNS(MathML, "mtd");
         if (this.type === "system" || this.type === "polynomial") {
-          cell.appendChild(document.createElement("span"));
+          if (j > 0) {
+            cell.appendChild(document.createElementNS(MathML, "mo")); // '+' or '='
+            cell.firstElementChild.setAttribute('form', 'infix');
+            cell.firstElementChild.textContent = '+';
+          }
+        }
+        var inputContainer = document.createElementNS(MathML, "mi");
+        cell.appendChild(inputContainer);
+        var aInput = makeNewInput(i, j);
+        inputContainer.appendChild(aInput);
+        if (this.type === "system" || this.type === "polynomial") {
+          cell.appendChild(document.createElementNS(MathML, "mo"));
+          cell.lastElementChild.innerHTML = '&it;';
+          cell.appendChild(document.createElementNS(MathML, "mrow")); // 'x_j' or ' '
         }
         row.appendChild(cell);
         Utils.check(cell);
@@ -18176,31 +22438,35 @@ MatrixTable.prototype.insert = function (inputValues, textareaValue, rows, cols,
 
       if (this.type === "system") {
         //Note: <span> is needed to set the "far" class
-        var cellHTML2 = "" +
-                       (j > 0 && j < this.cols - 1 ? "<math><mo>+</mo></math>" : "") +
-                       (j === this.cols - 1 ? "<math><mo>=</mo></math>" : "");
-        cell.firstElementChild.innerHTML = cellHTML2;
-        var cellHTML = "" +
-                       (j < this.cols - 1 ? "<math><msub><mrow><mi>x</mi></mrow><mrow><mn>${i}</mn></mrow></msub></math>".replace(/\${\i\}/g, j + 1) : "") +
-                       (j === this.cols - 1 ? "<math><mtext>&nbsp;</mtext></math>" : "");
-        cell.lastElementChild.innerHTML = cellHTML;
+        if (j > 0) {
+          cell.firstElementChild.textContent = (j < this.cols - 1 ? '+' : '=');
+        }
+        var variableName = j < this.cols - 1 ? this.variableNames[j] : undefined;
+        var cellHTML = (i === 0 && j < this.cols - 1 ? '<mi><span class="editable-on-click" data-index="${j}" data-value="${variableName}"></span></mi>'.replace(/\$\{j\}/g, j).replace(/\$\{variableName\}/g, variableName) : '') +
+                       (i !== 0 && j < this.cols - 1 ? makeContent(variableName) : '') +
+                       (j === this.cols - 1 ? "<mtext>&nbsp;</mtext>" : "");
+        //if (i !== 0 || cell.lastElementChild.firstElementChild == null || cell.lastElementChild.firstElementChild.getAttribute('data-value') !== variableName) {
+          cell.lastElementChild.innerHTML = cellHTML;
+        //}
+        if (i === 0 && j < this.cols - 1) {
+          var editableOnClick = cell.lastElementChild.querySelector('.editable-on-click');
+          Utils.check(editableOnClick);
+          editableOnClick.addEventListener('change-value', this._updateVariableNames, false);
+        }
       }
       if (this.type === "polynomial") {
+        if (j > 0) {
+          cell.firstElementChild.textContent = '+';
+        }
         //Note: <span> is needed to set the "far" class
-        var cellHTML = "<math>" +
-                       (j < this.cols - 2 ? "<msup><mrow><mi>x</mi></mrow><mrow><mn>" + (this.cols - j - 1).toString() + "</mn></mrow></msup>" : "") +
+        var cellHTML = (j < this.cols - 2 ? "<msup><mi>x</mi><mn>" + (this.cols - j - 1) + "</mn></msup>" : "") +
                        (j === this.cols - 2 ? "<mi>x</mi>" : "") +
-                       (j < this.cols - 1 ? "<mo>+</mo>" : "") +
-                       (j === this.cols - 1 ? "<mtext>&nbsp;</mtext>" : "") +
-                       "</math>";
+                       (j === this.cols - 1 ? "<mtext>&nbsp;</mtext>" : "");
         cell.lastElementChild.innerHTML = cellHTML;
       }
 
       var input = cell.querySelector("input");
-      var inputValue = (i < inputValues.length && j < inputValues[i].length ? Utils.escapeHTML(inputValues[i][j].replace(/^\s+|\s+$/g, "")) : "");
-      input.value = inputValue;
       this.table[i][j] = input;
-      checkInput(input, this.type);//!
       cell = cell.nextElementSibling;
     }
     if (cell != null) {
@@ -18216,6 +22482,29 @@ MatrixTable.prototype.insert = function (inputValues, textareaValue, rows, cols,
     while (tbody.lastElementChild !== row) {
       tbody.removeChild(tbody.lastElementChild);
     }
+  }
+
+  for (var i = 0; i < this.table.length; i += 1) {
+    for (var j = 0; j < this.table[i].length; j += 1) {
+      var input = this.table[i][j];
+      var inputValue = (i < inputValues.length && j < inputValues[i].length ? inputValues[i][j].trim() : "");
+      input.value = inputValue;
+      //?
+      var inputEvent = document.createEvent("Event");
+      inputEvent.initEvent("input", false, false);
+      input.dispatchEvent(inputEvent);
+      checkInput(input, this.type);//!
+    }
+  }
+
+  var helpToResize = function (element) {
+    var event = document.createEvent('Event');
+    event.initEvent('animationstart', true, false);
+    element.dispatchEvent(event);
+  };
+  var mos = this.container.querySelectorAll('mo');
+  for (var i = 0; i < mos.length; i += 1) {
+    helpToResize(mos[i]);
   }
 
   this.updateInputWidths();
@@ -18242,7 +22531,7 @@ MatrixTable.prototype.insert = function (inputValues, textareaValue, rows, cols,
   }
 
   checkTextarea(this.textarea, this.type);
-  this.updateTextareaWidth();
+  this.updateTextareaHeight();
 
   if (this.mode !== mode) {
     this.mode = mode;
@@ -18286,9 +22575,11 @@ MatrixTable.prototype.getDimensions = function (real) {
   var cols = (this.type === "system" && !real || this.type === "polynomial") && this.table.length !== 0 ? this.table[0].length : 0;
   for (var i = 0; i < this.table.length; i += 1) {
     for (var j = 0; j < this.table[i].length; j += 1) {
-      if (this.table[i][j].value.replace(/^\s+|\s+$/g, "") !== "") {
+      if (this.table[i][j].value.trim() !== "") {
         rows = Math.max(rows, i + 1);
-        cols = Math.max(cols, j + 1);
+        if (!(real && this.type === "system" && j === this.table[i].length - 1)) {
+          cols = Math.max(cols, j + 1);
+        }
       }
     }
   }
@@ -18316,6 +22607,7 @@ MatrixTable.prototype.onKeyDown = function (event) {
     var DOM_VK_UP = 38;
     var DOM_VK_RIGHT = 39;
     var DOM_VK_DOWN = 40;
+    var DOM_VK_DELETE = 46;
 
     var keyCode = event.keyCode;
     var input = event.target;
@@ -18325,6 +22617,10 @@ MatrixTable.prototype.onKeyDown = function (event) {
     if (keyCode === DOM_VK_BACK_SPACE) {
       if (input.selectionStart === 0 && input.selectionEnd === 0) {
         ds = 1;
+      }
+    } else if (keyCode === DOM_VK_DELETE) {
+      if (input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {
+        ds = 6;
       }
     } else if (keyCode === DOM_VK_RETURN) {
       ds = 2;
@@ -18385,6 +22681,16 @@ MatrixTable.prototype.onKeyDown = function (event) {
         i -= 1;
       } else if (ds === 5) {
         i += 1;
+      } else if (ds === 6) {
+        j += 1;
+        if (j === mt.cols) {
+          if (i + 1 !== mt.rows) {
+            i += 1;
+            j = 0;
+          } else {
+            j -= 1;
+          }
+        }
       }
 
       if (i < 0) {
@@ -18495,7 +22801,7 @@ DnD.initializeDropZone = function (element) {
   element.addEventListener("paste", DnD.onDropOrPaste, false);
 };
 DnD.onDragEnterOrDragOver = function (event) {
-  if (event.target == undefined || event.target.nodeType !== Node.ELEMENT_NODE || (event.target.tagName.toUpperCase() !== "TEXTAREA" && event.target.tagName.toUpperCase() !== "INPUT")) {
+  if (event.target == undefined || event.target.nodeType !== Node.ELEMENT_NODE || (event.target.tagName.toLowerCase() !== 'textarea' && event.target.tagName.toLowerCase() !== 'input')) {
     event.dataTransfer.dropEffect = "copy";
     event.preventDefault();
   }
@@ -18503,7 +22809,7 @@ DnD.onDragEnterOrDragOver = function (event) {
 DnD.getDataTransferItems = function (event) {
   var dataTransfer = event.type === "paste" ? event.clipboardData : event.dataTransfer;
   var result = {};
-  result["text/plain"] = dataTransfer == undefined ? "" : dataTransfer.getData("Text");
+  result["text/plain"] = dataTransfer == undefined ? "" : dataTransfer.getData("text/plain");
   return result;
 };
 DnD.onDropOrPaste = function (event) {
@@ -18515,13 +22821,14 @@ DnD.onDropOrPaste = function (event) {
   var text = DnD.getDataTransferItems(event)["text/plain"];
 
 //TODO: test (insertion of `x+y=2,y=1` into a textarea for a system of linear equations
-if (text.indexOf("=") === -1 ||
-    (target.getAttribute("data-matrix-table") != undefined && (MatrixTables[target.getAttribute("data-matrix-table")].mode === "cells" || input.tagName.toUpperCase() !== "TEXTAREA"))) {
+if ((text.indexOf("=") === -1 ||
+    (target.getAttribute("data-matrix-table") != null && (MatrixTables[target.getAttribute("data-matrix-table")].type !== "system" || MatrixTables[target.getAttribute("data-matrix-table")].mode === "cells" || input.tagName.toLowerCase() !== "textarea"))) && 
+    (/[\r\n\t]/.test(text) || input.tagName.toLowerCase() !== 'input')) {//TODO: fix
   event.preventDefault();
   RPNProxy.getMatrix(text, function (matrix) {
     if (matrix != undefined && target.getAttribute("data-matrix-table") != undefined) {
       MatrixTables[target.getAttribute("data-matrix-table")].insert(getTableFromAsciiMathMatrix(matrix));
-    } else if (input.tagName.toUpperCase() === "INPUT" || input.tagName.toUpperCase() === "TEXTAREA") {
+    } else if (input.tagName.toLowerCase() === 'input' || input.tagName.toLowerCase() === 'textarea') {
       var newText = matrix != undefined ? matrix : text;
       input.focus();//!
       if (caretPosition !== -1) {
@@ -18535,11 +22842,15 @@ if (text.indexOf("=") === -1 ||
       var inputEvent = document.createEvent("Event");
       inputEvent.initEvent("input", false, false);
       input.dispatchEvent(inputEvent);
-    } else if (input.tagName.toUpperCase() === "BUTTON") {// .add-table
+      //TODO: what if the effect was "cut" - ? it should be done by the browser
+    } else if (input.tagName.toLowerCase() === "button" && matrix != undefined) {// .add-table
       input.click();
       //TODO:
       var newTableId = document.querySelector(".main").firstElementChild.lastElementChild.querySelector(".insert-table").getAttribute("data-id");
       MatrixTables[newTableId].insert(getTableFromAsciiMathMatrix(matrix));
+    } else {
+      //TODO: remove - any other drop goes here
+      //window.onerror('drop or paste of ' + text, '', 0, 0, null);
     }
   });
 }
@@ -18549,7 +22860,7 @@ DnD.setData = function (dataTransfer, dataItemsByType) {
   for (var type in dataItemsByType) {
     if (Object.prototype.hasOwnProperty.call(dataItemsByType, type)) {
       var content = dataItemsByType[type];
-      dataTransfer.setData(type === "text/plain" ? "Text" : (type === "text/uri-list" ? "URL" : type), content);
+      dataTransfer.setData(type, content);
     }
   }
 };
@@ -18685,7 +22996,10 @@ Utils.on("click", ".clear-button", function (event) {
   }
 });
 
-var getInputErrorHTML = function (input, startPosition, endPosition, textMessage) {
+var getInputErrorHTML = function (positionInfo, textMessage) {
+  var input = positionInfo.input;
+  var startPosition = positionInfo.startPosition;
+  var endPosition = positionInfo.endPosition;
   //TODO: semantic elements - ?
   return textMessage + "\n" +
 //         Utils.escapeHTML(input) +
@@ -18694,14 +23008,19 @@ var getInputErrorHTML = function (input, startPosition, endPosition, textMessage
          "</div>";
 };
 
+  var removeDataErrorAttribute = function (input) {
+    input.removeAttribute("data-error");
+    var inputEvent = document.createEvent("Event");
+    inputEvent.initEvent("update-attribute", false, false);
+    input.dispatchEvent(inputEvent);
+  };
 
-var updateDataErrorAttribute = function (input, error, extraPositionOffset) {
-  extraPositionOffset = extraPositionOffset == undefined ? 0 : extraPositionOffset;
-  if (input != undefined) {//?
+  var updateDataErrorAttribute = function (input, error, positionInfo, extraPositionOffset) {
+    extraPositionOffset = extraPositionOffset == undefined ? 0 : positionInfo.p;
     var message = error.message;
-    if (message.indexOf("UserError:") === 0 || (RPNProxy.startPosition !== -1 && RPNProxy.endPosition !== -1)) {
-      var position = RPNProxy.startPosition;
-      var end = RPNProxy.endPosition;
+    var position = positionInfo.startPosition;
+    var end = positionInfo.endPosition;
+    if (message.indexOf("UserError:") === 0 || (position !== -1 && end !== -1)) {
       position += extraPositionOffset;//?
       end += extraPositionOffset;//?
       position = Math.min(position, input.value.length - 1);//TODO: fix ?
@@ -18710,20 +23029,18 @@ var updateDataErrorAttribute = function (input, error, extraPositionOffset) {
       var inputEvent = document.createEvent("Event");
       inputEvent.initEvent("update-attribute", false, false);
       input.dispatchEvent(inputEvent);
-
+      // no need to do an extra blinking
+/*
       var onInput = function (event) {
         window.setTimeout(function () {
           input.removeEventListener("input", onInput, false);
-          input.removeAttribute("data-error");
-          var inputEvent = document.createEvent("Event");
-          inputEvent.initEvent("update-attribute", false, false);
-          input.dispatchEvent(inputEvent);
+          removeDataErrorAttribute(input);
         }, 0);
       };
       input.addEventListener("input", onInput, false);
+*/
     }
-  }
-};
+  };
 
 var onExpressionClick = function (event) {
   var expression = this.getAttribute("data-expression");
@@ -18766,7 +23083,10 @@ var onExpressionClick = function (event) {
       var end = Date.now();
       hit({click: "onExpressionClick-" + roundValue(end - start, 10 - 1)});
     } else {
-      updateDataErrorAttribute(expressionInput, resultError);
+      if (typeof resultError === "string") {
+        resultError = new TypeError(resultError); // out of memory in Firefox
+      }
+      var positionInfo = RPNProxy.getPositionInfo();
 
       //TODO: show details anyway (!?)
       //!new - test
@@ -18775,7 +23095,7 @@ var onExpressionClick = function (event) {
         zInsAct("<div>" + i18n.determinantIsEqualToZeroTheMatrixIsSingularNotInvertible + "</div>", "", details, expression, actHistoryId, detailsHTML, false);
       }
       //!new
-      handleError(expression, classList, resultError);//?
+      handleError(expression, classList, resultError, positionInfo);//?
     }
   });
 };
@@ -18788,14 +23108,21 @@ var zInsAct = function (resultHTML, resultMatrix, details, expressionString, act
 
   var element = document.createElement("li");
   element.classList.toggle("actline", true);
+  element.setAttribute("id", "action-" + actHistoryId);
 
   var insertButtons = document.getElementById("insert-buttons-template").content.firstElementChild.cloneNode(true);
   var buttons = insertButtons.querySelectorAll(".print-matrix-button");
   for (var i = 0; i < buttons.length; i += 1) {
     buttons[i].hidden = resultMatrix === "" || MatrixTables[buttons[i].getAttribute("data-print-matrix-to")] == undefined;
-    buttons[i].setAttribute("data-act-history-id", actHistoryId.toString());
+    buttons[i].setAttribute("data-act-history-id", actHistoryId);
   }
-  insertButtons.querySelector(".clear-button").setAttribute("data-act-history-id", actHistoryId.toString());
+  insertButtons.querySelector(".clear-button").setAttribute("data-act-history-id", actHistoryId);
+
+  var shareButton = insertButtons.querySelector(".share-item-button");
+  if (shareButton != null) {
+    shareButton.hidden = loading || window.navigator.share == null;
+    shareButton.setAttribute("data-act-history-id", actHistoryId);
+  }
 
   var add = function (html) {
     var div = document.createElement("div");
@@ -18804,8 +23131,8 @@ var zInsAct = function (resultHTML, resultMatrix, details, expressionString, act
       element.appendChild(div.firstChild);
     }
   };
-  add(resultHTML);
   element.appendChild(insertButtons);
+  add(resultHTML);
   if (detailsHTML != undefined) {
     add(detailsHTML);
   }
@@ -18834,11 +23161,37 @@ var zInsAct = function (resultHTML, resultMatrix, details, expressionString, act
   }
 };
 
+//TODO: assign id instead to the <details> - ?
+function getKey(element) {
+  var key = [];
+  var e = element;
+  while (e != null && e.id === '') {
+    // https://stackoverflow.com/a/57503796/839199
+    var index = 0;
+    var c = e.previousElementSibling;
+    while (c != null) {
+      if (c.tagName.toLowerCase() === e.tagName.toLowerCase()) {
+        index += 1;
+      }
+      c = c.previousElementSibling;
+    }
+    key.push(e.tagName.toLowerCase() + ':nth-of-type(' + index + ')');
+    e = e.parentNode;
+  }
+  if (e != null) {
+    key.push('#' + e.id);
+  }
+  key.reverse();
+  return key.join(' > ');
+}
+
 // .details-container > <details> > <summary>
 Utils.initialize(".details-container", function (element) {
   var details = element.firstElementChild;
   var summary = details.firstElementChild;
-  details.initDetails(summary);
+  if (details.initDetails != null) {
+    details.initDetails(summary);
+  }
   details.addEventListener("toggle", function (event) {
     Utils.check1(event.target);
   }, false);
@@ -18852,23 +23205,53 @@ Utils.initialize(".details-container", function (element) {
     var idPrefix = element.getAttribute("data-id-prefix");
     var printOptions = {idPrefix: idPrefix, fractionDigits: decimalFractionDigits};
     var array = JSON.parse(arrayAttribute);
+    var e = element.firstElementChild.nextElementSibling;
     for (var i = 0; i < array.length; i += 1) {
       hit({details: array[i].type});//!
+      RPNProxy.getDetails(array[i], printOptions, function (html) {
+        var tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        e.appendChild(tmp);
+        Utils.check(tmp);
+      });
     }
-    RPNProxy.getDetails(array, printOptions, function (html) {
-      var e = element.firstElementChild.nextElementSibling;
-      e.innerHTML = html;
-      Utils.check(e);
-    }, function (error) {
-      console.log(error);//TODO:
-    });
   }, false);
   summary.addEventListener("mousedown", function (event) {
     if (event.detail > 1) {
       event.preventDefault();
     }
   }, false);
+  
+  //!new 2019-08-29
+  // keep the state of <details> in the history.state:
+  if (window.history.replaceState != null) {
+    var historyState = window.history.state;
+    if (historyState != null) {
+      var state = historyState.detailsSummary;
+      if (state != null) {
+        var key = getKey(details);
+        if (state[key] != null) {
+          summary.click();
+        }
+      }
+    }
+  }
+
 });
+
+if (window.history.replaceState != null) {
+  window.addEventListener("pagehide", function (event) {
+    var detailsSummary = {};
+    var es = document.querySelectorAll("details[open]");
+    for (var i = 0; i < es.length; i++) {
+      var key =  getKey(es[i]);
+      detailsSummary[key] = true;
+    }
+    var historyState = Object.assign({}, window.history.state);
+    historyState.detailsSummary = detailsSummary;
+    window.history.replaceState(historyState, document.title, window.location.href);
+  }, false);
+}
 
 Utils.on("click", ".change-button", function (event) {
   hit({click: "change-button"});
@@ -18891,12 +23274,16 @@ var onInputExampleLinkClick = function (event) {
 //super hack
   event.preventDefault();
   var s = this.parentNode.parentNode.querySelector(".input-example-code").textContent;
-  s = s.replace(/\u0020+/g, " ").replace(/^\s+|\s+$/g, "").replace(/\n\u0020/g, "\n");
+  s = s.replace(/\u0020+/g, " ").trim().replace(/\n\u0020/g, "\n");
   var mt = MatrixTables["A"];
   if (mt.mode === "cells") {
     mt.container.querySelector(".swap-mode-button").click();
   }
-  mt.textarea.value = s;
+  mt.textarea.focus();
+  //mt.textarea.value = s;
+  mt.textarea.select();
+  insertText(mt.textarea, s, 0, 1 / 0);
+  // for some reasons `mt.textarea.focus()` does not scroll to show the full textarea in Chrome sometimes
   mt.container.scrollIntoViewIfNeeded(false);
 };
 
@@ -19005,7 +23392,7 @@ Utils.initialize(".insert-table", function (element) {
     mode = x.mode;
   }
   x.mode = mode;
-  x.insert(state.inputValues, state.textareaValue, state.rows, state.cols, state.textareaStyleWidth, state.textareaStyleHeight, state.mode);
+  x.insert(state.inputValues, state.textareaValue, state.rows, state.cols, state.textareaStyleWidth, state.textareaStyleHeight, state.mode, state.variableNames);
   //element.style.visibility = "";
   x.onmodechange = function () {
     keyStorage.setItem(modeKey, x.mode);
@@ -19014,7 +23401,8 @@ Utils.initialize(".insert-table", function (element) {
     var newMode = x.mode === "cells" ? "" : "cells";
     RPNProxy.getElementsArray(x.getDataState(), function (result) {
       var elements = result.elements;
-      x.insert(elements, undefined, undefined, undefined, undefined, undefined, newMode);
+      var variableNames = result.variableNames;
+      x.insert(elements, undefined, undefined, undefined, undefined, undefined, newMode, variableNames);
     });
   };
   DnD.initializeDropZone(element);
@@ -19072,9 +23460,16 @@ var encodeLocationHash = function (hash) {
                                  .replace(/%2F/g, "/"); // 2018-07-09
 };
 
+// https://stackoverflow.com/questions/7449588/why-does-decodeuricomponent-lock-up-my-browser
+function decodeURIComponentSafe(s) {
+  // TODO: non-throwing in all cases implementation
+  // determinant-Gauss%28%7B%7B0,z,y,u%7D,%7Bz,z,u%2By,u%2By%7D,%7Bu%2By,u%2By,z,z%7D,%7Bu,y,z,0%7D%7D%29
+  return decodeURIComponent(s.replace(/%(?![0-9A-Fa-f][0-9A-Fa-f])/g, '%25'));
+}
+
 var decodeLocationHash = function (hash) {
   try {
-    return decodeURIComponent(hash);
+    return decodeURIComponentSafe(hash);
   } catch (error) {
     window.onerror(error.message + " : " + hash, "", 0, 0, error);
   }
@@ -19100,7 +23495,7 @@ var onHashChange = function (event) {
   if (/^[\-\da-zA-Z]*system_1$/.exec(hash) != undefined) { // || document.getElementById(hash) != undefined
     return;
   }
-  if (hash.replace(/^\s+|\s+$/g, "") === "") {
+  if (hash.trim() === "") {
     return;
   }
 
@@ -19122,11 +23517,12 @@ var onHashChange = function (event) {
         zInsAct(resultHTML, resultMatrix, details, expressionString, actHistoryId, detailsHTML, false);
       }
     } else {
-      if (resultError.message.indexOf("UserError:") === 0) {
+      //if (resultError.message.indexOf("UserError:") === 0) {
         //ignore
-      } else {
-        handleError(hash, "location.hash", resultError);
-      }
+      //} else {
+        var positionInfo = RPNProxy.getPositionInfo();
+        handleError(hash, "location.hash", resultError, positionInfo);
+      //}
     }
   });
 };
@@ -19141,15 +23537,15 @@ Utils.initialize(".from-cookie", function (element) {
       var s = list[i].textContent;
       var html = "";
       if (s === "{{11,3},{7,11}}*{{8,0,1},{0,3,5}}") {
-        html = "<mrow><mfenced open=\"(\" close=\")\"><mrow><mtable rowspacing=\"0ex\"><mtr><mtd><mrow><mn>11</mn></mrow></mtd><mtd><mrow><mn>3</mn></mrow></mtd></mtr><mtr><mtd><mrow><mn>7</mn></mrow></mtd><mtd><mrow><mn>11</mn></mrow></mtd></mtr></mtable></mrow></mfenced><mo>&times;</mo><mfenced open=\"(\" close=\")\"><mrow><mtable rowspacing=\"0ex\"><mtr><mtd><mrow><mn>8</mn></mrow></mtd><mtd><mrow><mn>0</mn></mrow></mtd><mtd><mrow><mn>1</mn></mrow></mtd></mtr><mtr><mtd><mrow><mn>0</mn></mrow></mtd><mtd><mrow><mn>3</mn></mrow></mtd><mtd><mrow><mn>5</mn></mrow></mtd></mtr></mtable></mrow></mfenced></mrow>";
+        html = '<mrow><mrow><mo>(</mo><mtable rowspacing="0ex"><mtr><mtd><mn>11</mn></mtd><mtd><mn>3</mn></mtd></mtr><mtr><mtd><mn>7</mn></mtd><mtd><mn>11</mn></mtd></mtr></mtable><mo>)</mo></mrow><mo>&times;</mo><mrow><mo>(</mo><mtable rowspacing="0ex"><mtr><mtd><mn>8</mn></mtd><mtd><mn>0</mn></mtd><mtd><mn>1</mn></mtd></mtr><mtr><mtd><mn>0</mn></mtd><mtd><mn>3</mn></mtd><mtd><mn>5</mn></mtd></mtr></mtable><mo>)</mo></mrow></mrow>';
       } else if (s === "determinant({{1,2,3},{4,5,6},{7,2,9}})") {
-        html = "<mfenced open=\"|\" close=\"|\"><mrow><mtable rowspacing=\"0ex\"><mtr><mtd><mrow><mn>1</mn></mrow></mtd><mtd><mrow><mn>2</mn></mrow></mtd><mtd><mrow><mn>3</mn></mrow></mtd></mtr><mtr><mtd><mrow><mn>4</mn></mrow></mtd><mtd><mrow><mn>5</mn></mrow></mtd><mtd><mrow><mn>6</mn></mrow></mtd></mtr><mtr><mtd><mrow><mn>7</mn></mrow></mtd><mtd><mrow><mn>2</mn></mrow></mtd><mtd><mrow><mn>9</mn></mrow></mtd></mtr></mtable></mrow></mfenced>";
+        html = '<mrow><mo>|</mo><mtable rowspacing="0ex"><mtr><mtd><mn>1</mn></mtd><mtd><mn>2</mn></mtd><mtd><mn>3</mn></mtd></mtr><mtr><mtd><mn>4</mn></mtd><mtd><mn>5</mn></mtd><mtd><mn>6</mn></mtd></mtr><mtr><mtd><mn>7</mn></mtd><mtd><mn>2</mn></mtd><mtd><mn>9</mn></mtd></mtr></mtable><mo>|</mo></mrow>';
       } else if (s === "{{1,2},{3,4}}^-1") {
-        html = "<msup><mrow><mfenced open=\"(\" close=\")\"><mrow><mtable rowspacing=\"0ex\"><mtr><mtd><mrow><mn>1</mn></mrow></mtd><mtd><mrow><mn>2</mn></mrow></mtd></mtr><mtr><mtd><mrow><mn>3</mn></mrow></mtd><mtd><mrow><mn>4</mn></mrow></mtd></mtr></mtable></mrow></mfenced></mrow><mrow><mfenced open=\"(\" close=\")\"><mrow><mo>&minus;</mo><mrow><mn>1</mn></mrow></mrow></mfenced></mrow></msup>";
+        html = '<msup><mrow><mo>(</mo><mtable rowspacing="0ex"><mtr><mtd><mn>1</mn></mtd><mtd><mn>2</mn></mtd></mtr><mtr><mtd><mn>3</mn></mtd><mtd><mn>4</mn></mtd></mtr></mtable><mo>)</mo></mrow><mrow><mo>(</mo><mrow><mo>&minus;</mo><mn>1</mn></mrow><mo>)</mo></mrow></msup>';
       } else if (s === "{{1,2,3},{4,5,6},{7,2,9}}^-1") {
-        html = "<msup><mrow><mfenced open=\"(\" close=\")\"><mrow><mtable rowspacing=\"0ex\"><mtr><mtd><mrow><mn>1</mn></mrow></mtd><mtd><mrow><mn>2</mn></mrow></mtd><mtd><mrow><mn>3</mn></mrow></mtd></mtr><mtr><mtd><mrow><mn>4</mn></mrow></mtd><mtd><mrow><mn>5</mn></mrow></mtd><mtd><mrow><mn>6</mn></mrow></mtd></mtr><mtr><mtd><mrow><mn>7</mn></mrow></mtd><mtd><mrow><mn>2</mn></mrow></mtd><mtd><mrow><mn>9</mn></mrow></mtd></mtr></mtable></mrow></mfenced></mrow><mrow><mfenced open=\"(\" close=\")\"><mrow><mo>&minus;</mo><mrow><mn>1</mn></mrow></mrow></mfenced></mrow></msup>";
+        html = '<msup><mrow><mo>(</mo><mtable rowspacing="0ex"><mtr><mtd><mn>1</mn></mtd><mtd><mn>2</mn></mtd><mtd><mn>3</mn></mtd></mtr><mtr><mtd><mn>4</mn></mtd><mtd><mn>5</mn></mtd><mtd><mn>6</mn></mtd></mtr><mtr><mtd><mn>7</mn></mtd><mtd><mn>2</mn></mtd><mtd><mn>9</mn></mtd></mtr></mtable><mo>)</mo></mrow><mrow><mo>(</mo><mrow><mo>&minus;</mo><mn>1</mn></mrow><mo>)</mo></mrow></msup>';
       }
-      //html = Expression.p(s, undefined, {idPrefix: "g", fractionDigits: decimalFractionDigits, useMatrixContainer: false});
+      //html = Expression.p(s, undefined, {idPrefix: "g", useMatrixContainer: false});
       list[i].innerHTML = "<math>" + html + "</math>";
     }
   }
@@ -19159,18 +23555,13 @@ Utils.initialize(".from-cookie", function (element) {
     var needsExample = exampleAttribute != undefined;
     var oldVersion = ActHistoryItem.version;
     if (true) {
-      var fixMoMo = function (html) {
-        if (html !== "" && html != undefined) {
-          //TODO: counter
-          return html.replace(/<mo>\+<mo>/g, "<mo>+</mo>");
-        }
-      };
       for (var actHistoryId in storedActHistory) {
       if (Object.prototype.hasOwnProperty.call(storedActHistory, actHistoryId)) {
         var storedActHistoryItem = storedActHistory[actHistoryId].item;
+        if (storedActHistoryItem != null) {//! some strange issue in Safari
 
-        storedActHistoryItem.resultHTML = fixMoMo(storedActHistoryItem.resultHTML);
-        storedActHistoryItem.detailsHTML = fixMoMo(storedActHistoryItem.detailsHTML);
+        storedActHistoryItem.resultHTML = storedActHistoryItem.resultHTML;
+        storedActHistoryItem.detailsHTML = storedActHistoryItem.detailsHTML;
 
         zInsAct(storedActHistoryItem.resultHTML,
                 storedActHistoryItem.resultMatrix,
@@ -19183,6 +23574,7 @@ Utils.initialize(".from-cookie", function (element) {
         oldVersion = Math.min(oldVersion, storedActHistoryItem.oldVersion);
         if (storedActHistoryItem.expressionString == undefined) {
           oldVersion = -1;
+        }
         }
       }
       }
@@ -19197,7 +23589,7 @@ Utils.initialize(".from-cookie", function (element) {
     onHashChange(undefined);
     needsExample = needsExample && actHistoryStorage.size() === 0;
     if (needsExample) {
-      var printOptions = {idPrefix: "g", fractionDigits: -1};
+      var printOptions = {idPrefix: "g"};
       RPNProxy.runExpression("{{5,8,-4},{6,9,-5},{4,7,-2}}*{{2},{-3},{1}}", undefined, undefined, undefined, printOptions, function (result) {
         if (result.resultError == undefined) {
           // TODO: loading or not loading - ?
@@ -19206,16 +23598,11 @@ Utils.initialize(".from-cookie", function (element) {
           //! Note:
           //! No need to save the example
         } else {
-          handleError("", "", result.resultError);
+          handleError("", "", result.resultError, {});
         }
       });
     }
   });
-
-  // Opera 11.64
-  if (window.XDomainRequest == undefined && !("draggable" in document.documentElement)) {
-    document.body.classList.toggle("no-draggable", true);
-  }
 
   var pathname = window.location.pathname;
   var links = document.querySelector(".menu").querySelectorAll("a");
@@ -19246,6 +23633,9 @@ var toggleValidDropTarget = function (force) {
   }
 };
 var onDragOverOrDragEnd = function (event) {
+  // if (event.dataTransfer.types.indexOf('text/plain') === -1) {
+  //   return;
+  // }
   var key = "data-drop-target-timeout";
   var a = Number.parseInt(document.body.getAttribute(key) || 0, 10) || 0;
   if (a !== 0) {
@@ -19379,9 +23769,12 @@ Utils.initialize(".ads-container", function (adsContainer) {
         xhr.onload = function () {
           var x = undefined;
           var a = JSON.parse(xhr.responseText);
+          var lang = document.documentElement.lang;
+          var now = Date.now();
           for (var i = 0; i < a.length; i += 1) {
-            if ((document.documentElement.lang === a[i].lang || a[i].lang === "*") && Math.random() < a[i].probability && Date.now() < a[i].endTime) {
-              x = a[i];
+            var item = a[Math.floor(Math.random() * a.length)];
+            if ((lang === item.lang || item.lang === "*") && Math.random() < item.probability && now < item.endTime) {
+              x = item;
             }
           }
           if (x != undefined) {
@@ -19502,6 +23895,10 @@ if (window.location.protocol !== "file:") {
           console.log("ServiceWorker registration failed:", error);
         });
       }
+      //TODO:
+      //serviceWorker.addEventListener('controllerchange', function() {
+      //  window.location.reload();
+      //});
     } else {
       useAppCache();
     }
@@ -19518,18 +23915,37 @@ window.addEventListener("beforeinstallprompt", function (event) {
   //  });
   //}
   hit({beforeinstallprompt: "show"});
+
+  var installButton = document.getElementById('a2hs-button');
+  if (installButton != null) {
+    installButton.addEventListener('click', function (mouseEvent) {
+      event.prompt();
+    }, false);
+    installButton.hidden = false;
+  }
 }, false);
 
-Utils.initialize(".share-button", function (shareButton) {
+document.addEventListener("DOMContentLoaded", function (event) {
   if (window.navigator.share != undefined) {
-    shareButton.addEventListener("click", function (event) {
-      window.navigator.share({
-        title: decodeURIComponent(shareButton.getAttribute("data-text")),
-        url: decodeURIComponent(shareButton.getAttribute("data-url"))
-      });
-    }, false);
-    shareButton.hidden = false;
+    var shareButton = document.getElementById('share-button');
+    if (shareButton != null) {
+      shareButton.addEventListener("click", function (event) {
+        window.navigator.share({
+          title: decodeURIComponent(shareButton.getAttribute("data-text")),
+          url: decodeURIComponent(shareButton.getAttribute("data-url"))
+        });
+      }, false);
+      shareButton.hidden = false;
+    }
   }
+}, false);
+
+Utils.on("click", ".share-item-button", function (event) {
+  var actHistoryId = this.getAttribute("data-act-history-id");
+  var item = actHistoryStorage.getItem(Number.parseInt(actHistoryId, 10));
+  window.navigator.share({
+    url: "#" + encodeLocationHash(item.expressionString)
+  });
 });
 
 Utils.initialize(".more-button", function (button) {
@@ -19596,4 +24012,80 @@ Utils.on("click", ".remove-table", function (event) {
   onMatrixTable();
 });
 
-}(this));
+  function makeContent(variableName) {
+    var i = variableName.indexOf("_");
+    if (i === -1) {
+      return '<mi>${x}</mi>'.replace(/\$\{x\}/g, variableName);
+    }
+    var t = '<msub><mi>${x}</mi><mn>${i}</mn></msub>';
+    return t.replace(/\$\{x\}/g, variableName.slice(0, i)).replace(/\$\{i\}/g, variableName.slice(i + 1));
+  }
+
+Utils.initialize(".editable-on-click", function (element) {
+  element.innerHTML = '<button type="button"></button><input type="text" pattern="[a-z](?:_\d)?" autocapitalize="off" autocomplete="off" spellcheck="false" hidden />';
+  var button = element.querySelector("button");
+  var input = element.querySelector("input");
+  button.innerHTML = '<math>' + makeContent(element.getAttribute('data-value')) + '</math>';
+  // Firefox will not insert a new character into the <input> if to switch during "keypress"
+  element.addEventListener("keydown", function (event) {
+    if (!event.defaultPrevented && !event.ctrlKey && !event.shiftKey && !event.metaKey && !event.altKey) {
+      var charCode = String.fromCharCode(event.keyCode).toLowerCase().charCodeAt(0);
+      if (charCode >= "a".charCodeAt(0) && charCode <= "z".charCodeAt(0)) {
+        if (!button.hidden) {
+          button.click();
+        }
+      }
+    }
+  }, false);
+  function updateValue() {
+    var value = input.value.trim();
+    element.setAttribute("data-value", value);
+    button.innerHTML = '<math>' + makeContent(value) + '</math>';
+    var changeEvent = document.createEvent("Event");
+    changeEvent.initEvent("change-value", false, false);
+    element.dispatchEvent(changeEvent);
+  }
+  element.addEventListener("click", function (event) {
+    if (!event.defaultPrevented) {
+      event.preventDefault();
+      button.hidden = true;
+      input.hidden = false;
+      input.focus();
+      input.select();
+      input.addEventListener("blur", function (event) {
+        var value = input.value.trim();
+        if (element.getAttribute("data-value") !== value && value !== "") {
+          updateValue();
+        }
+        button.hidden = false;
+        input.hidden = true;
+      }, false);
+      input.addEventListener("keydown", function (event) {
+        var DOM_VK_RETURN = 13;
+        var DOM_VK_ESCAPE = 27;
+        if (event.keyCode === DOM_VK_ESCAPE) {
+          input.value = element.getAttribute("data-value");
+          event.preventDefault();
+          button.hidden = false;
+          button.focus();
+          input.hidden = true;
+        }
+        if (event.keyCode === DOM_VK_RETURN) {
+          if (input.value.trim() === "") {
+            input.value = element.getAttribute("data-value");
+          }
+          event.preventDefault();
+          updateValue();
+          button.hidden = false;
+          button.focus();
+          input.hidden = true;
+        }
+      }, false);
+      input.addEventListener("input", function (event) {
+        input.style.width = (input.value.length + 2) + "ch";
+      }, false);
+    }
+  }, false);
+});
+
+}());
